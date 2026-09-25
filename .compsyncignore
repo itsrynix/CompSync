@@ -1,0 +1,17 @@
+# CompSync Default Ignore Patterns for Adobe After Effects
+*After Effects Disk Cache*
+Adobe After Effects Auto-Save/
+*.adobecache
+*.aecache
+*.cache
+*Adobe Premiere Pro Audio Previews*
+*Adobe Premiere Pro Video Previews*
+*.pek
+*.cfa
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+._*
+*.part
+*.tmp

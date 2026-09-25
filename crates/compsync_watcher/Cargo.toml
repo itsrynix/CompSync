@@ -1,0 +1,21 @@
+[package]
+name = "compsync_watcher"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+compsync_core = { path = "../compsync_core" }
+thiserror = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_Foundation",
+    "Win32_System_RestartManager",
+    "Win32_Security",
+] }
+
+[dev-dependencies]
+tempfile = "3.12"

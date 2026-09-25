@@ -1,0 +1,29 @@
+# Rust build artifacts
+target/
+**/target/
+
+# Node & Frontend dependencies
+node_modules/
+**/node_modules/
+frontend/dist/
+
+# CompSync internal DB and temp files
+.compsync/
+**/*.aep.lock
+*.part
+*.tmp
+
+# OS junk
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# IDE & Logs
+*.log
+.vscode/
+.idea/
+
+# Allow release binary distribution
+!bin/
+!bin/*.exe
