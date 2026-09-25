@@ -12,27 +12,32 @@ const STEPS = [
   {
     step: 1,
     title: '1. Pilih Folder Project',
-    desc: 'Klik tombol "Ganti Folder..." pada navigasi atas untuk memilih folder tempat file .aep dan aset footage Anda berada.',
+    desc: 'Di header kiri, periksa folder project aktif Anda atau klik "Ganti" untuk berpindah ke project After Effects lainnya.',
   },
   {
     step: 2,
-    title: '2. Deteksi Lock File After Effects',
-    desc: 'Perhatikan badge status di tengah atas. CompSync otomatis mendeteksi jika AfterFX.exe sedang membuka file Anda untuk mencegah kerusakan file.',
+    title: '2. Identitas Perangkat & Push/Pull',
+    desc: 'Di header tengah, Anda bisa mengubah (rename) nama perangkat Anda. CompSync otomatis menampilkan perangkat mitra (contoh: Laptop-Adrian) untuk Tarik (Pull) data.',
   },
   {
     step: 3,
-    title: '3. Pindai Perubahan File (Changes)',
-    desc: 'Di tab "Perubahan File" pada panel kiri, klik "Pindai Perubahan" untuk memindai file video, audio, dan aset yang baru atau diedit.',
+    title: '3. Deteksi Lock After Effects',
+    desc: 'Indikator di kanan atas memantau apakah file .aep sedang aktif dibuka oleh After Effects untuk mencegah tabrakan edit file.',
   },
   {
     step: 4,
-    title: '4. Simpan Versi (Snapshot Commit)',
-    desc: 'Di bagian bawah panel kiri, tulis ringkasan revisi Anda dan klik "Simpan Versi ke Snapshot" untuk mengunci milestone progres kerja.',
+    title: '4. Perubahan File & Detail',
+    desc: 'Panel kiri menampilkan file yang diubah atau baru. Klik salah satu file untuk melihat rincian ukuran dan statusnya di panel kanan.',
   },
   {
     step: 5,
-    title: '5. Sinkronisasi Antar Komputer (LAN P2P)',
-    desc: 'Pada panel kanan, perangkat lain di jaringan Wi-Fi lokal akan terdeteksi otomatis. Klik "Tarik Versi" untuk menyalin file langsung tanpa internet.',
+    title: '5. Simpan Versi (Snapshot)',
+    desc: 'Tulis ringkasan revisi di bagian bawah panel kiri lalu klik "Simpan Versi ke Snapshot" untuk mengunci milestone progres edit Anda.',
+  },
+  {
+    step: 6,
+    title: '6. Akses Cepat Aset Folder',
+    desc: 'Gunakan baris tombol cepat di atas panel kanan untuk membuka file .aep, folder Footage, atau folder Audio langsung di File Explorer.',
   },
 ];
 
@@ -45,20 +50,20 @@ export const InteractiveTourSpotlight: React.FC<Props> = ({
   const stepInfo = STEPS.find((s) => s.step === currentStep) || STEPS[0];
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 max-w-md w-full bg-studio-surface border border-studio-blue-border rounded-xl shadow-2xl p-4 text-xs select-none animate-fadeIn">
+    <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-studio-surface border border-studio-blue-border rounded-xl shadow-2xl p-4 text-xs select-none animate-fadeIn">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-studio-border">
         <div className="flex items-center space-x-2">
           <span className="w-2 h-2 rounded-full bg-studio-blue-light" />
-          <span className="font-semibold text-gray-100">{stepInfo.title}</span>
+          <span className="font-semibold text-studio-text-primary">{stepInfo.title}</span>
         </div>
-        <div className="flex items-center space-x-2 text-gray-400">
-          <span className="text-[11px] font-mono">
+        <div className="flex items-center space-x-2 text-studio-text-muted">
+          <span className="text-[10px] font-mono">
             {stepInfo.step} / {STEPS.length}
           </span>
           <button
             onClick={onClose}
-            className="p-1 hover:text-white rounded hover:bg-studio-card transition-colors"
+            className="p-1 hover:text-studio-text-primary rounded hover:bg-studio-card transition-colors"
             title="Tutup Petunjuk"
           >
             <X className="w-3.5 h-3.5" />
@@ -67,17 +72,17 @@ export const InteractiveTourSpotlight: React.FC<Props> = ({
       </div>
 
       {/* Description */}
-      <p className="text-gray-300 py-3 leading-relaxed text-xs">
+      <p className="text-studio-text-secondary py-3 leading-relaxed text-xs">
         {stepInfo.desc}
       </p>
 
       {/* Footer Navigation */}
-      <div className="flex items-center justify-between pt-2 border-t border-studio-border/60">
+      <div className="flex items-center justify-between pt-2 border-t border-studio-borderSubtle">
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-200 text-[11px] transition-colors"
+          className="text-studio-text-muted hover:text-studio-text-secondary text-[11px] transition-colors"
         >
-          Lewati Panduan
+          Lewati
         </button>
 
         <div className="flex items-center space-x-2">
@@ -86,8 +91,8 @@ export const InteractiveTourSpotlight: React.FC<Props> = ({
             disabled={currentStep === 1}
             className={`p-1.5 rounded border border-studio-border transition-colors ${
               currentStep === 1
-                ? 'opacity-30 cursor-not-allowed text-gray-600'
-                : 'hover:bg-studio-card text-gray-300 hover:text-white'
+                ? 'opacity-30 cursor-not-allowed text-studio-text-muted'
+                : 'hover:bg-studio-card text-studio-text-secondary hover:text-studio-text-primary'
             }`}
             title="Langkah Sebelumnya"
           >

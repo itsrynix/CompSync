@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
-import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo } from './types';
+import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo, ScannedFileDto } from './types';
 import { Header } from './components/Header';
 import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
 import { InteractiveTourSpotlight } from './components/InteractiveTourSpotlight';
-import { AlertTriangle, CheckCircle2, FolderOpen, Layers } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FolderOpen } from 'lucide-react';
 
 export function App() {
   const [projectPath, setProjectPath] = useState<string>(() => {
@@ -15,11 +15,21 @@ export function App() {
     );
   });
 
+  const [myDeviceName, setMyDeviceName] = useState<string>(() => {
+    return localStorage.getItem('compsync_my_device_name') || 'PC-Studio-Utama';
+  });
+
   const [status, setStatus] = useState<RepoStatusDto | null>(null);
   const [scanResult, setScanResult] = useState<ScanResultDto | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotSummaryDto[]>([]);
   const [peers, setPeers] = useState<PeerInfo[]>([]);
+  const [selectedFile, setSelectedFile] = useState<ScannedFileDto | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<SnapshotSummaryDto | null>(null);
+  const [lastSyncInfo, setLastSyncInfo] = useState<{
+    peerName: string;
+    time: string;
+    type: 'push' | 'pull';
+  } | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -33,6 +43,13 @@ export function App() {
 
   // Check if running in browser mock mode
   const isMockMode = typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
+
+  const handleRenameMyDevice = (newName: string) => {
+    setMyDeviceName(newName);
+    localStorage.setItem('compsync_my_device_name', newName);
+    setNotification(`Nama perangkat diubah menjadi: "${newName}"`);
+    setTimeout(() => setNotification(null), 3000);
+  };
 
   const refreshAll = async (pathOverride?: string) => {
     const activePath = pathOverride ?? projectPath;
@@ -50,9 +67,13 @@ export function App() {
         const p = await api.getPeers();
         setPeers(p);
 
-        if (isMockMode) {
+        // Preload scan in mock mode so user sees changed files immediately
+        if (isMockMode && !scanResult) {
           const res = await api.scan(activePath);
           setScanResult(res);
+          if (res.files.length > 0 && !selectedFile) {
+            setSelectedFile(res.files[0]);
+          }
         }
       } else {
         setSnapshots([]);
@@ -82,6 +103,7 @@ export function App() {
         setProjectPath(selected);
         localStorage.setItem('compsync_project_path', selected);
         setScanResult(null);
+        setSelectedFile(null);
         setSelectedSnapshot(null);
         await refreshAll(selected);
         if (isGuideActive && guideStep === 1) {
@@ -108,9 +130,12 @@ export function App() {
     try {
       const res = await api.scan(projectPath);
       setScanResult(res);
+      if (res.files.length > 0) {
+        setSelectedFile(res.files[0]);
+      }
       await refreshAll();
-      if (isGuideActive && guideStep === 3) {
-        setGuideStep(4);
+      if (isGuideActive && guideStep === 4) {
+        setGuideStep(5);
       }
     } catch (err: any) {
       alert(`Gagal memindai: ${err}`);
@@ -127,8 +152,8 @@ export function App() {
       setNotification(`Versi ${snapId.slice(0, 8)} berhasil disimpan!`);
       setTimeout(() => setNotification(null), 4000);
       await refreshAll();
-      if (isGuideActive && guideStep === 4) {
-        setGuideStep(5);
+      if (isGuideActive && guideStep === 5) {
+        setGuideStep(6);
       }
     } catch (err: any) {
       alert(`Gagal menyimpan versi: ${err}`);
@@ -142,7 +167,12 @@ export function App() {
     setSyncingPeer(peer.device_id);
     try {
       const snapId = await api.pullFromPeer(projectPath, peer.ip_addr, peer.tcp_port);
-      setNotification(`Berhasil sinkronisasi dengan ${peer.device_name}!`);
+      setLastSyncInfo({
+        peerName: peer.device_name,
+        time: new Date().toLocaleTimeString(),
+        type: 'pull',
+      });
+      setNotification(`Berhasil sinkronisasi (Tarik Versi) dari ${peer.device_name}!`);
       setTimeout(() => setNotification(null), 5000);
       await refreshAll();
     } catch (err: any) {
@@ -178,9 +208,19 @@ export function App() {
     }
   };
 
+  const handleSelectFile = (file: ScannedFileDto) => {
+    setSelectedFile(file);
+    setSelectedSnapshot(null);
+  };
+
+  const handleSelectSnapshot = (snap: SnapshotSummaryDto) => {
+    setSelectedSnapshot(snap);
+    setSelectedFile(null);
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-studio-bg text-gray-100 font-sans overflow-hidden">
-      {/* Top Header (GitHub Desktop Style) */}
+    <div className="flex flex-col h-screen bg-studio-bg text-studio-text-primary font-sans overflow-hidden">
+      {/* 1. Header (Simplified Sync & Identity Hub) */}
       <Header
         status={status}
         projectPath={projectPath}
@@ -192,11 +232,17 @@ export function App() {
         loading={loading}
         onSimulateLockToggle={handleSimulateLock}
         isMockMode={isMockMode}
+        myDeviceName={myDeviceName}
+        onRenameMyDevice={handleRenameMyDevice}
+        peers={peers}
+        onPull={handlePull}
+        syncingPeer={syncingPeer}
+        lastSyncInfo={lastSyncInfo}
       />
 
       {/* Global Notification Banner */}
       {notification && (
-        <div className="bg-studio-blue text-white text-xs px-5 py-2 font-medium flex items-center justify-between shadow-sm">
+        <div className="bg-studio-blue text-white text-xs px-4 py-1.5 font-medium flex items-center justify-between shadow-sm">
           <div className="flex items-center space-x-2">
             <CheckCircle2 className="w-3.5 h-3.5 text-blue-200" />
             <span>{notification}</span>
@@ -210,26 +256,26 @@ export function App() {
         </div>
       )}
 
-      {/* Main Content Area */}
+      {/* 2. Main Content Area */}
       {status && !status.is_initialized ? (
         <div className="flex-1 flex items-center justify-center p-6 bg-studio-bg">
           <div className="bg-studio-surface border border-studio-border rounded-xl p-8 text-center max-w-lg shadow-xl space-y-4">
-            <div className="w-12 h-12 rounded-xl bg-studio-card border border-studio-border flex items-center justify-center mx-auto text-yellow-400">
+            <div className="w-12 h-12 rounded-xl bg-studio-card border border-studio-border flex items-center justify-center mx-auto text-amber-400">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-gray-100">Folder Belum Terdaftar di CompSync</h2>
-              <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                Folder <code className="text-gray-200 font-mono bg-studio-card px-1.5 py-0.5 rounded">{projectPath}</code> belum memiliki index versi CompSync.
+              <h2 className="text-sm font-bold text-studio-text-primary">Folder Belum Terdaftar di CompSync</h2>
+              <p className="text-xs text-studio-text-secondary mt-1 leading-relaxed">
+                Folder <code className="text-studio-text-primary font-mono bg-studio-card px-1.5 py-0.5 rounded">{projectPath}</code> belum memiliki index versi CompSync.
               </p>
             </div>
 
             <div className="flex items-center justify-center space-x-3 pt-2">
               <button
                 onClick={handleSelectFolder}
-                className="px-4 py-2 rounded-lg bg-studio-card hover:bg-studio-border border border-studio-border text-gray-200 text-xs font-medium transition-colors flex items-center space-x-2"
+                className="px-4 py-2 rounded-lg bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-secondary hover:text-studio-text-primary text-xs font-medium transition-colors flex items-center space-x-2"
               >
-                <FolderOpen className="w-3.5 h-3.5 text-gray-400" />
+                <FolderOpen className="w-3.5 h-3.5 text-studio-text-muted" />
                 <span>Pilih Folder Lain</span>
               </button>
 
@@ -254,21 +300,23 @@ export function App() {
               onSnapshot={handleSnapshot}
               scanning={scanning}
               creatingSnapshot={creatingSnapshot}
+              selectedFile={selectedFile}
+              onSelectFile={handleSelectFile}
               selectedSnapshotId={selectedSnapshot?.snapshot_id || null}
-              onSelectSnapshot={setSelectedSnapshot}
+              onSelectSnapshot={handleSelectSnapshot}
+              myDeviceName={myDeviceName}
             />
           </div>
 
-          {/* Right Column: LAN Peers & Project Folders (~60%) */}
+          {/* Right Column: Asset Row & File/Snapshot Inspector (~60%) */}
           <div className="col-span-7 h-full overflow-hidden">
             <RightPanel
-              peers={peers}
               projectPath={projectPath}
               status={status}
-              onPull={handlePull}
-              syncingPeer={syncingPeer}
               onOpenFolder={handleOpenFolder}
+              selectedFile={selectedFile}
               selectedSnapshot={selectedSnapshot}
+              myDeviceName={myDeviceName}
             />
           </div>
         </div>
@@ -278,7 +326,7 @@ export function App() {
       {isGuideActive && (
         <InteractiveTourSpotlight
           currentStep={guideStep}
-          onNext={() => setGuideStep((prev) => Math.min(prev + 1, 5))}
+          onNext={() => setGuideStep((prev) => Math.min(prev + 1, 6))}
           onPrev={() => setGuideStep((prev) => Math.max(prev - 1, 1))}
           onClose={() => setIsGuideActive(false)}
         />
