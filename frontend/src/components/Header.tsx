@@ -2,30 +2,40 @@ import React, { useState } from 'react';
 import { RepoStatusDto, PeerInfo } from '../types';
 import {
   FolderGit2,
-  FolderOpen,
   ExternalLink,
   RefreshCw,
   HelpCircle,
   Laptop,
   ArrowDownLeft,
-  ArrowUpRight,
   Edit2,
   Check,
   X,
   ChevronDown,
+  Plus,
+  Folder,
+  Settings,
 } from 'lucide-react';
+
+export interface ProjectItem {
+  name: string;
+  path: string;
+}
 
 interface Props {
   status: RepoStatusDto | null;
   projectPath: string;
   onRefresh: () => void;
-  onSelectFolder: () => void;
-  onOpenInExplorer: () => void;
   onToggleGuide: () => void;
+  onOpenSettings: () => void;
   isGuideActive: boolean;
   loading: boolean;
   onSimulateLockToggle?: () => void;
   isMockMode?: boolean;
+  // Project list & dropdown
+  projectList: ProjectItem[];
+  onSwitchProject: (path: string) => void;
+  onAddNewProject: () => void;
+  onOpenFolderByPath: (path: string) => void;
   // Device Identity & Sync Hub
   myDeviceName: string;
   onRenameMyDevice: (newName: string) => void;
@@ -39,13 +49,16 @@ export const Header: React.FC<Props> = ({
   status,
   projectPath,
   onRefresh,
-  onSelectFolder,
-  onOpenInExplorer,
   onToggleGuide,
+  onOpenSettings,
   isGuideActive,
   loading,
   onSimulateLockToggle,
   isMockMode,
+  projectList,
+  onSwitchProject,
+  onAddNewProject,
+  onOpenFolderByPath,
   myDeviceName,
   onRenameMyDevice,
   peers,
@@ -56,10 +69,11 @@ export const Header: React.FC<Props> = ({
   const [isEditingDeviceName, setIsEditingDeviceName] = useState(false);
   const [tempDeviceName, setTempDeviceName] = useState(myDeviceName);
   const [showPeerDropdown, setShowPeerDropdown] = useState(false);
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
 
   const primaryAep = status?.aep_files?.[0];
   const isLocked = primaryAep?.lock.is_locked;
-  const projectName =
+  const currentProjectName =
     status?.project_name ||
     projectPath.split('/').filter(Boolean).pop() ||
     projectPath.split('\\').filter(Boolean).pop() ||
@@ -76,45 +90,137 @@ export const Header: React.FC<Props> = ({
   };
 
   return (
-    <header className="bg-studio-surface border-b border-studio-border px-4 py-2 flex items-center justify-between select-none shadow-sm z-30 gap-3">
-      {/* 1. Left Cluster: Current Project Selector & Explorer */}
-      <div className="flex items-center space-x-2 flex-shrink-0">
-        <div className="flex items-center space-x-2 bg-studio-sidebar border border-studio-border rounded-md px-2.5 py-1.5 hover:border-studio-borderHover transition-colors">
+    <header className="bg-studio-surface border-b border-studio-border px-4 py-2 flex items-center justify-between select-none shadow-sm z-30 gap-3 relative">
+      {/* Backdrop for open dropdowns */}
+      {(showProjectDropdown || showPeerDropdown) && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => {
+            setShowProjectDropdown(false);
+            setShowPeerDropdown(false);
+          }}
+        />
+      )}
+
+      {/* 1. Left Cluster: Unified Project Selector Dropdown (GitHub Desktop Style) */}
+      <div className="relative z-50 flex-shrink-0">
+        <button
+          onClick={() => {
+            setShowProjectDropdown(!showProjectDropdown);
+            setShowPeerDropdown(false);
+          }}
+          className={`flex items-center space-x-2 bg-studio-sidebar border rounded-md px-3 py-1.5 transition-all text-left group ${
+            showProjectDropdown
+              ? 'border-studio-blue bg-studio-card'
+              : 'border-studio-border hover:bg-studio-card hover:border-studio-borderHover'
+          }`}
+          title="Pilih project atau integrasikan folder baru"
+        >
           <FolderGit2 className="w-3.5 h-3.5 text-studio-blue-light flex-shrink-0" />
-          <div className="flex flex-col text-left">
+          <div className="flex flex-col text-left pr-1">
             <span className="text-[9px] text-studio-text-muted font-medium uppercase tracking-wider leading-none">
               Project Aktif
             </span>
             <span
               className="text-xs font-semibold text-studio-text-primary max-w-[170px] truncate leading-tight mt-0.5"
-              title={projectName}
+              title={currentProjectName}
             >
-              {projectName}
+              {currentProjectName}
             </span>
           </div>
-        </div>
-
-        <button
-          onClick={onSelectFolder}
-          className="p-1.5 rounded-md bg-studio-sidebar hover:bg-studio-card border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors text-xs flex items-center space-x-1"
-          title="Ganti folder project After Effects"
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span className="text-[11px] hidden md:inline">Ganti</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-studio-text-muted transition-transform duration-200 ${
+              showProjectDropdown ? 'rotate-180 text-studio-blue-light' : 'group-hover:text-studio-text-secondary'
+            }`}
+          />
         </button>
 
-        <button
-          onClick={onOpenInExplorer}
-          className="p-1.5 rounded-md bg-studio-sidebar hover:bg-studio-card border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors text-xs flex items-center space-x-1"
-          title="Buka folder di Windows Explorer"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          <span className="text-[11px] hidden md:inline">Explorer</span>
-        </button>
+        {/* Dropdown Menu for Integrated Projects */}
+        {showProjectDropdown && (
+          <div className="absolute top-full left-0 mt-1.5 w-80 bg-studio-surface border border-studio-border rounded-lg shadow-2xl z-50 overflow-hidden divide-y divide-studio-borderSubtle animate-fadeIn">
+            {/* Dropdown Header */}
+            <div className="px-3 py-2 bg-studio-sidebar/60 flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold text-studio-text-muted tracking-wider">
+                Folder Project Terintegrasi ({projectList.length})
+              </span>
+            </div>
+
+            {/* Project List */}
+            <div className="max-h-64 overflow-y-auto divide-y divide-studio-borderSubtle">
+              {projectList.map((p) => {
+                const isCurrent = p.path.toLowerCase() === projectPath.toLowerCase();
+                return (
+                  <div
+                    key={p.path}
+                    className={`px-3 py-2.5 flex items-center justify-between group transition-colors ${
+                      isCurrent
+                        ? 'bg-studio-card/90 border-l-2 border-studio-blue'
+                        : 'hover:bg-studio-card/50'
+                    }`}
+                  >
+                    {/* Clickable project row to switch */}
+                    <div
+                      onClick={() => {
+                        setShowProjectDropdown(false);
+                        onSwitchProject(p.path);
+                      }}
+                      className="min-w-0 flex-1 cursor-pointer pr-2"
+                    >
+                      <div className="flex items-center space-x-1.5">
+                        <span
+                          className={`text-xs font-semibold truncate ${
+                            isCurrent ? 'text-studio-blue-light' : 'text-studio-text-primary'
+                          }`}
+                        >
+                          {p.name}
+                        </span>
+                        {isCurrent && (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-studio-blue-subtle text-studio-blue-light font-medium border border-studio-blue-border">
+                            Aktif
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className="text-[10px] text-studio-text-muted font-mono truncate mt-0.5"
+                        title={p.path}
+                      >
+                        {p.path}
+                      </p>
+                    </div>
+
+                    {/* Explorer Button on the right side of the row */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenFolderByPath(p.path);
+                      }}
+                      className="p-1.5 rounded hover:bg-studio-sidebar text-studio-text-muted hover:text-studio-text-primary border border-transparent hover:border-studio-border transition-colors flex-shrink-0"
+                      title={`Buka ${p.name} di Windows File Explorer`}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Bottom Action: Integrasikan Folder Project Baru */}
+            <button
+              onClick={() => {
+                setShowProjectDropdown(false);
+                onAddNewProject();
+              }}
+              className="w-full px-3 py-2.5 bg-studio-sidebar/90 hover:bg-studio-card flex items-center space-x-2 text-xs text-studio-blue-light font-medium transition-colors border-t border-studio-border"
+            >
+              <Plus className="w-4 h-4 text-studio-blue-light" />
+              <span>+ Integrasikan Folder Project Baru...</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. Center Cluster: Device Identity & Push/Pull Sync Hub */}
-      <div className="flex items-center space-x-2 bg-studio-sidebar/80 border border-studio-border px-3 py-1 rounded-lg">
+      <div className="flex items-center space-x-2 bg-studio-sidebar/80 border border-studio-border px-3 py-1 rounded-lg z-30">
         {/* My Device Name (Renamable) */}
         <div className="flex items-center space-x-1.5 pr-2 border-r border-studio-border">
           <Laptop className="w-3.5 h-3.5 text-studio-blue-light" />
@@ -165,11 +271,14 @@ export const Header: React.FC<Props> = ({
         </div>
 
         {/* Sync Partner / Push-Pull Target */}
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 relative">
           {activePeer ? (
-            <div className="relative">
+            <div>
               <button
-                onClick={() => setShowPeerDropdown(!showPeerDropdown)}
+                onClick={() => {
+                  setShowPeerDropdown(!showPeerDropdown);
+                  setShowProjectDropdown(false);
+                }}
                 className="flex items-center space-x-1.5 text-xs text-studio-text-secondary hover:text-studio-text-primary transition-colors py-0.5 px-1.5 rounded hover:bg-studio-card"
                 title="Daftar perangkat mitra sinkronisasi"
               >
@@ -180,7 +289,7 @@ export const Header: React.FC<Props> = ({
 
               {/* Dropdown for peers */}
               {showPeerDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-64 bg-studio-surface border border-studio-border rounded-lg shadow-xl p-2 z-50 text-xs">
+                <div className="absolute top-full left-0 mt-1.5 w-64 bg-studio-surface border border-studio-border rounded-lg shadow-xl p-2 z-50 text-xs animate-fadeIn">
                   <div className="text-[10px] uppercase font-bold text-studio-text-muted px-2 py-1">
                     Mitra Push / Pull Terdeteksi
                   </div>
@@ -243,7 +352,7 @@ export const Header: React.FC<Props> = ({
       </div>
 
       {/* 3. Right Cluster: After Effects Lock Indicator & Controls */}
-      <div className="flex items-center space-x-2 flex-shrink-0">
+      <div className="flex items-center space-x-2 flex-shrink-0 z-30">
         {/* AE File Lock Status */}
         {primaryAep ? (
           <div
@@ -288,6 +397,16 @@ export const Header: React.FC<Props> = ({
           title="Pindai ulang status file dan lock After Effects"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-studio-blue-light' : ''}`} />
+        </button>
+
+        {/* Theme Settings Button */}
+        <button
+          onClick={onOpenSettings}
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md bg-studio-sidebar hover:bg-studio-card border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors text-xs"
+          title="Pengaturan Tema & Warna UI (After Effects Appearance)"
+        >
+          <Settings className="w-3.5 h-3.5 text-studio-blue-light" />
+          <span className="text-[11px] hidden lg:inline font-medium">Tema</span>
         </button>
 
         {/* Tour Toggle */}
