@@ -49,6 +49,11 @@ export function App() {
 
         const p = await api.getPeers();
         setPeers(p);
+
+        if (isMockMode) {
+          const res = await api.scan(activePath);
+          setScanResult(res);
+        }
       } else {
         setSnapshots([]);
       }
