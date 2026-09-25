@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Plus,
   Folder,
+  Settings,
 } from 'lucide-react';
 
 export interface ProjectItem {
@@ -25,6 +26,7 @@ interface Props {
   projectPath: string;
   onRefresh: () => void;
   onToggleGuide: () => void;
+  onOpenSettings: () => void;
   isGuideActive: boolean;
   loading: boolean;
   onSimulateLockToggle?: () => void;
@@ -48,6 +50,7 @@ export const Header: React.FC<Props> = ({
   projectPath,
   onRefresh,
   onToggleGuide,
+  onOpenSettings,
   isGuideActive,
   loading,
   onSimulateLockToggle,
@@ -394,6 +397,16 @@ export const Header: React.FC<Props> = ({
           title="Pindai ulang status file dan lock After Effects"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-studio-blue-light' : ''}`} />
+        </button>
+
+        {/* Theme Settings Button */}
+        <button
+          onClick={onOpenSettings}
+          className="flex items-center space-x-1 px-2 py-1.5 rounded-md bg-studio-sidebar hover:bg-studio-card border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors text-xs"
+          title="Pengaturan Tema & Warna UI (After Effects Appearance)"
+        >
+          <Settings className="w-3.5 h-3.5 text-studio-blue-light" />
+          <span className="text-[11px] hidden lg:inline font-medium">Tema</span>
         </button>
 
         {/* Tour Toggle */}

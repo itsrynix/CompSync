@@ -5,6 +5,7 @@ import { Header, ProjectItem } from './components/Header';
 import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
 import { InteractiveTourSpotlight } from './components/InteractiveTourSpotlight';
+import { ThemeSettingsModal, applyThemeToDom } from './components/ThemeSettingsModal';
 import { AlertTriangle, CheckCircle2, FolderOpen } from 'lucide-react';
 
 export function App() {
@@ -41,6 +42,29 @@ export function App() {
   const [myDeviceName, setMyDeviceName] = useState<string>(() => {
     return localStorage.getItem('compsync_my_device_name') || 'PC-Studio-Utama';
   });
+
+  // Theme & Appearance state (Default: Adobe After Effects Dark)
+  const [selectedThemeId, setSelectedThemeId] = useState<string>(() => {
+    return localStorage.getItem('compsync_theme_id') || 'ae-default';
+  });
+  const [selectedAccentId, setSelectedAccentId] = useState<string>(() => {
+    return localStorage.getItem('compsync_accent_id') || 'adobe-blue';
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    applyThemeToDom(selectedThemeId, selectedAccentId);
+  }, [selectedThemeId, selectedAccentId]);
+
+  const handleSelectTheme = (themeId: string) => {
+    setSelectedThemeId(themeId);
+    localStorage.setItem('compsync_theme_id', themeId);
+  };
+
+  const handleSelectAccent = (accentId: string) => {
+    setSelectedAccentId(accentId);
+    localStorage.setItem('compsync_accent_id', accentId);
+  };
 
   const [status, setStatus] = useState<RepoStatusDto | null>(null);
   const [scanResult, setScanResult] = useState<ScanResultDto | null>(null);
@@ -275,6 +299,7 @@ export function App() {
         projectPath={projectPath}
         onRefresh={() => refreshAll()}
         onToggleGuide={() => setIsGuideActive(!isGuideActive)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         isGuideActive={isGuideActive}
         loading={loading}
         onSimulateLockToggle={handleSimulateLock}
@@ -372,6 +397,16 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* Theme Settings Modal (After Effects Appearance) */}
+      <ThemeSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        selectedThemeId={selectedThemeId}
+        selectedAccentId={selectedAccentId}
+        onSelectTheme={handleSelectTheme}
+        onSelectAccent={handleSelectAccent}
+      />
 
       {/* Floating Non-Intrusive Guided Spotlight */}
       {isGuideActive && (

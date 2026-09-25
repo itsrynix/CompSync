@@ -2,9 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Default Theme: Adobe After Effects Dark (Spectrum Neutral Gray) */
+  --studio-bg: #1d1d1d;
+  --studio-surface: #262626;
+  --studio-sidebar: #1f1f1f;
+  --studio-card: #303030;
+  --studio-card-hover: #3a3a3a;
+  --studio-border: #383838;
+  --studio-border-subtle: #292929;
+  --studio-border-hover: #525252;
+  --studio-text-primary: #e8e8e8;
+  --studio-text-secondary: #a3a3a3;
+  --studio-text-muted: #737373;
+  --studio-blue: #1473e6;
+  --studio-blue-hover: #0d66d0;
+  --studio-blue-light: #3b9eff;
+  --studio-blue-subtle: rgba(20, 115, 230, 0.16);
+  --studio-blue-border: rgba(59, 158, 255, 0.35);
+}
+
 @layer base {
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Adobe Clean", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--studio-bg);
+    color: var(--studio-text-primary);
   }
 }
 
@@ -13,12 +35,12 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #12141c;
+  background: var(--studio-bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b3040;
+  background: var(--studio-card);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #404760;
+  background: var(--studio-border-hover);
 }
