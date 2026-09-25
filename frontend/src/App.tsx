@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef } from 'react';
 import { api } from './api';
-import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo, ScannedFileDto } from './types';
-import { Header } from './components/Header';
+import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo, ScannedFileDto, PairingInfo, SyncProgress } from './types';
+import { TopBar, ProjectItem } from './components/TopBar';
 import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
 import { InteractiveTourSpotlight } from './components/InteractiveTourSpotlight';
-import { AlertTriangle, CheckCircle2, FolderOpen } from 'lucide-react';
+import { ThemeSettingsModal, applyThemeToDom } from './components/ThemeSettingsModal';
+import { PairingModal } from './components/PairingModal';
+import { AlertTriangle, CheckCircle2, FolderOpen, X } from 'lucide-react';
+import { Language } from './i18n';
 
 export function App() {
   const [projectPath, setProjectPath] = useState<string>(() => {
@@ -15,11 +18,71 @@ export function App() {
     );
   });
 
+  const [projectList, setProjectList] = useState<ProjectItem[]>(() => {
+    const saved = localStorage.getItem('compsync_project_list');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return [
+      {
+        name: 'Commercial_AE_2026',
+        path: 'D:/Studio_Projects/Commercial_AE_2026',
+      },
+      {
+        name: 'Explainer_Promo',
+        path: 'C:/Users/Rynix/Videos/AfterEffects/Explainer_Promo',
+      },
+      {
+        name: 'CompSync (Repo)',
+        path: 'c:/Users/Rynix/Documents/Adrian/Coding/CompSync',
+      },
+    ];
+  });
+
   const [myDeviceName, setMyDeviceName] = useState<string>(() => {
     return localStorage.getItem('compsync_my_device_name') || 'PC-Studio-Utama';
   });
 
+  // Language state (English default)
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('compsync_language') as Language) || 'en';
+  });
+
+  const handleSelectLanguage = (lang: Language) => {
+    setLanguage(lang);
+    localStorage.setItem('compsync_language', lang);
+  };
+
+  // Theme & Appearance state
+  const [selectedThemeId, setSelectedThemeId] = useState<string>(() => {
+    return localStorage.getItem('compsync_theme_id') || 'ae-default';
+  });
+  const [selectedAccentId, setSelectedAccentId] = useState<string>(() => {
+    return localStorage.getItem('compsync_accent_id') || 'adobe-blue';
+  });
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    applyThemeToDom(selectedThemeId, selectedAccentId);
+  }, [selectedThemeId, selectedAccentId]);
+
+  const handleSelectTheme = (themeId: string) => {
+    setSelectedThemeId(themeId);
+    localStorage.setItem('compsync_theme_id', themeId);
+  };
+
+  const handleSelectAccent = (accentId: string) => {
+    setSelectedAccentId(accentId);
+    localStorage.setItem('compsync_accent_id', accentId);
+  };
+
   const [status, setStatus] = useState<RepoStatusDto | null>(null);
+  const [pairingInfo, setPairingInfo] = useState<PairingInfo | null>(null);
+  const [isPairingOpen, setIsPairingOpen] = useState(false);
+  const [initMode, setInitMode] = useState<'choice' | 'create' | 'join'>('choice');
+  const [pairingCode, setPairingCode] = useState('');
   const [scanResult, setScanResult] = useState<ScanResultDto | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotSummaryDto[]>([]);
   const [peers, setPeers] = useState<PeerInfo[]>([]);
@@ -35,20 +98,105 @@ export function App() {
   const [scanning, setScanning] = useState(false);
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
   const [syncingPeer, setSyncingPeer] = useState<string | null>(null);
-  const [notification, setNotification] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+
+  // Robust notification system with timer reset and key remount
+  const [notification, setNotification] = useState<{ id: number; message: string } | null>(null);
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerNotification = (message: string, durationMs: number = 3500) => {
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = null;
+    }
+    const newId = Date.now();
+    setNotification({ id: newId, message });
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      notificationTimerRef.current = null;
+    }, durationMs);
+  };
+
+  const dismissNotification = () => {
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+      notificationTimerRef.current = null;
+    }
+    setNotification(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Stretchable sidebar width state
+  const [leftWidth, setLeftWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('compsync_left_panel_width');
+    return saved ? Math.max(280, Math.min(800, parseInt(saved, 10))) : 390;
+  });
+  const [isDraggingDivider, setIsDraggingDivider] = useState(false);
+
+  const handleMouseDownDivider = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingDivider(true);
+    const startX = e.clientX;
+    const startWidth = leftWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const newWidth = Math.max(
+        280,
+        Math.min(window.innerWidth * 0.65, startWidth + (moveEvent.clientX - startX))
+      );
+      setLeftWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingDivider(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setLeftWidth((w) => {
+        localStorage.setItem('compsync_left_panel_width', w.toString());
+        return w;
+      });
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
 
   // Non-intrusive Guided Tour state
-  const [isGuideActive, setIsGuideActive] = useState(true);
+  const [isGuideActive, setIsGuideActive] = useState(false);
   const [guideStep, setGuideStep] = useState(1);
 
   // Check if running in browser mock mode
   const isMockMode = typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window);
 
+  useEffect(() => {
+    if (isMockMode) return;
+
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<SyncProgress>('sync-progress', (event) => {
+        setSyncProgress(event.payload);
+      }).then((removeListener) => {
+        unlisten = removeListener;
+      });
+    });
+
+    return () => unlisten?.();
+  }, [isMockMode]);
+
   const handleRenameMyDevice = (newName: string) => {
     setMyDeviceName(newName);
     localStorage.setItem('compsync_my_device_name', newName);
-    setNotification(`Nama perangkat diubah menjadi: "${newName}"`);
-    setTimeout(() => setNotification(null), 3000);
+    triggerNotification(
+      language === 'id' ? `Nama perangkat diubah: "${newName}"` : `Device renamed to: "${newName}"`,
+      3000
+    );
   };
 
   const refreshAll = async (pathOverride?: string) => {
@@ -61,13 +209,14 @@ export function App() {
       setStatus(s);
 
       if (s.is_initialized) {
+        const pairing = await api.getPairingInfo(activePath);
+        setPairingInfo(pairing);
         const snaps = await api.getSnapshots(activePath);
         setSnapshots(snaps);
 
         const p = await api.getPeers();
         setPeers(p);
 
-        // Preload scan in mock mode so user sees changed files immediately
         if (isMockMode && !scanResult) {
           const res = await api.scan(activePath);
           setScanResult(res);
@@ -76,10 +225,13 @@ export function App() {
           }
         }
       } else {
+        setPairingInfo(null);
         setSnapshots([]);
+        setPeers([]);
+        setScanResult(null);
       }
     } catch (err: any) {
-      console.error('Failed to get status:', err);
+      console.error('Failed to refresh repo state:', err);
     } finally {
       setLoading(false);
     }
@@ -87,41 +239,80 @@ export function App() {
 
   useEffect(() => {
     refreshAll();
-    const interval = setInterval(async () => {
-      try {
-        const p = await api.getPeers();
-        setPeers(p);
-      } catch (_) {}
-    }, 4000);
-    return () => clearInterval(interval);
   }, [projectPath]);
 
-  const handleSelectFolder = async () => {
+  const handleSwitchProject = (newPath: string) => {
+    if (newPath === projectPath) return;
+    setProjectPath(newPath);
+    localStorage.setItem('compsync_project_path', newPath);
+    setSelectedFile(null);
+    setSelectedSnapshot(null);
+    setScanResult(null);
+    setInitMode('choice');
+    setPairingCode('');
+  };
+
+  const handleAddNewProject = async () => {
+    const promptMsg =
+      language === 'id'
+        ? 'Masukkan path folder project After Effects baru (contoh: D:/Projects/Commercial_2026):'
+        : 'Enter new After Effects project folder path (e.g. D:/Projects/Commercial_2026):';
+    const folder = prompt(promptMsg);
+    if (!folder) return;
+
+    const trimmed = folder.trim().replace(/\\/g, '/');
+    const folderName = trimmed.split('/').filter(Boolean).pop() || trimmed;
+
+    const exists = projectList.some(
+      (p) => p.path.toLowerCase() === trimmed.toLowerCase()
+    );
+
+    if (!exists) {
+      const updated = [...projectList, { name: folderName, path: trimmed }];
+      setProjectList(updated);
+      localStorage.setItem('compsync_project_list', JSON.stringify(updated));
+    }
+
+    handleSwitchProject(trimmed);
+  };
+
+  const handleJoinExistingProject = async () => {
+    const code = prompt(
+      language === 'id'
+        ? 'Masukkan pairing code dari komputer utama:'
+        : 'Enter the pairing code from the primary computer:'
+    );
+    if (!code?.trim()) return;
+
+    const folder = await api.selectFolder();
+    if (!folder) return;
+
+    const normalizedPath = folder.replace(/\\/g, '/');
+    setLoading(true);
     try {
-      const selected = await api.selectFolder();
-      if (selected) {
-        setProjectPath(selected);
-        localStorage.setItem('compsync_project_path', selected);
-        setScanResult(null);
-        setSelectedFile(null);
-        setSelectedSnapshot(null);
-        await refreshAll(selected);
-        if (isGuideActive && guideStep === 1) {
-          setGuideStep(2);
-        }
-      }
+      await api.joinProject(normalizedPath, code.trim());
+      handleSwitchProject(normalizedPath);
+      triggerNotification(
+        language === 'id'
+          ? 'Folder berhasil dipasangkan ke project.'
+          : 'Folder joined to the project successfully.',
+        4000
+      );
+      await refreshAll(normalizedPath);
     } catch (err: any) {
-      alert(`Gagal memilih folder: ${err}`);
+      alert(`Join failed: ${err}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleOpenFolder = async (subPath?: string) => {
-    try {
-      const full = subPath ? `${projectPath}/${subPath}` : projectPath;
-      await api.openFolder(full);
-    } catch (err) {
-      console.error(err);
-    }
+  const handleOpenFolderByPath = (targetPath: string) => {
+    api.openFolder(targetPath);
+  };
+
+  const handleOpenFolder = (subPath?: string) => {
+    const full = subPath ? `${projectPath}/${subPath}` : projectPath;
+    api.openFolder(full);
   };
 
   const handleScan = async () => {
@@ -130,33 +321,39 @@ export function App() {
     try {
       const res = await api.scan(projectPath);
       setScanResult(res);
-      if (res.files.length > 0) {
-        setSelectedFile(res.files[0]);
-      }
-      await refreshAll();
-      if (isGuideActive && guideStep === 4) {
-        setGuideStep(5);
+      triggerNotification(
+        language === 'id'
+          ? `Pemindaian selesai: ${res.files.length} file terdeteksi.`
+          : `Scan complete: ${res.files.length} files detected.`,
+        3500
+      );
+      if (isGuideActive && guideStep === 3) {
+        setGuideStep(4);
       }
     } catch (err: any) {
-      alert(`Gagal memindai: ${err}`);
+      alert(`Scan failed: ${err}`);
     } finally {
       setScanning(false);
     }
   };
 
-  const handleSnapshot = async (msg: string) => {
+  const handleSnapshot = async (message: string) => {
     if (!projectPath) return;
     setCreatingSnapshot(true);
     try {
-      const snapId = await api.snapshot(projectPath, msg);
-      setNotification(`Versi ${snapId.slice(0, 8)} berhasil disimpan!`);
-      setTimeout(() => setNotification(null), 4000);
+      const snapshotId = await api.snapshot(projectPath, message);
+      triggerNotification(
+        language === 'id'
+          ? `Snapshot #${snapshotId.slice(0, 8)} berhasil dibuat!`
+          : `Snapshot #${snapshotId.slice(0, 8)} committed successfully!`,
+        4000
+      );
       await refreshAll();
-      if (isGuideActive && guideStep === 5) {
-        setGuideStep(6);
+      if (isGuideActive && guideStep === 4) {
+        setGuideStep(5);
       }
     } catch (err: any) {
-      alert(`Gagal menyimpan versi: ${err}`);
+      alert(`Failed to commit snapshot: ${err}`);
     } finally {
       setCreatingSnapshot(false);
     }
@@ -165,18 +362,23 @@ export function App() {
   const handlePull = async (peer: PeerInfo) => {
     if (!projectPath) return;
     setSyncingPeer(peer.device_id);
+    setSyncProgress(null);
     try {
-      const snapId = await api.pullFromPeer(projectPath, peer.ip_addr, peer.tcp_port);
+      await api.pullFromPeer(projectPath, peer.ip_addr, peer.tcp_port);
       setLastSyncInfo({
         peerName: peer.device_name,
         time: new Date().toLocaleTimeString(),
         type: 'pull',
       });
-      setNotification(`Berhasil sinkronisasi (Tarik Versi) dari ${peer.device_name}!`);
-      setTimeout(() => setNotification(null), 5000);
+      triggerNotification(
+        language === 'id'
+          ? `Berhasil sinkronisasi dari ${peer.device_name}!`
+          : `Successfully pulled latest revisions from ${peer.device_name}!`,
+        5000
+      );
       await refreshAll();
     } catch (err: any) {
-      alert(`Gagal sinkronisasi: ${err}`);
+      alert(`Sync failed: ${err}`);
     } finally {
       setSyncingPeer(null);
     }
@@ -187,14 +389,39 @@ export function App() {
     setLoading(true);
     try {
       await api.initProject(projectPath);
-      setNotification('Repository CompSync berhasil diinisialisasi.');
-      setTimeout(() => setNotification(null), 4000);
+      triggerNotification(
+        language === 'id'
+          ? 'Repository CompSync berhasil diinisialisasi.'
+          : 'CompSync repository initialized successfully.',
+        4000
+      );
       await refreshAll();
       if (isGuideActive && guideStep === 1) {
         setGuideStep(2);
       }
     } catch (err: any) {
-      alert(`Gagal inisialisasi: ${err}`);
+      alert(`Init failed: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleJoin = async () => {
+    if (!projectPath || !pairingCode.trim()) return;
+    setLoading(true);
+    try {
+      await api.joinProject(projectPath, pairingCode.trim());
+      triggerNotification(
+        language === 'id'
+          ? 'Folder berhasil dipasangkan ke project.'
+          : 'Folder joined to the project successfully.',
+        4000
+      );
+      setInitMode('choice');
+      setPairingCode('');
+      await refreshAll();
+    } catch (err: any) {
+      alert(`Join failed: ${err}`);
     } finally {
       setLoading(false);
     }
@@ -220,39 +447,75 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen bg-studio-bg text-studio-text-primary font-sans overflow-hidden">
-      {/* 1. Header (Simplified Sync & Identity Hub) */}
-      <Header
+      {/* 1. TopBar (Unified Project Dropdown + Device Sync Hub + Icon Settings) */}
+      <TopBar
         status={status}
         projectPath={projectPath}
         onRefresh={() => refreshAll()}
-        onSelectFolder={handleSelectFolder}
-        onOpenInExplorer={() => handleOpenFolder()}
-        onToggleGuide={() => setIsGuideActive(!isGuideActive)}
+        onToggleGuide={() => { setGuideStep(1); setIsGuideActive(!isGuideActive); }}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenPairing={() => setIsPairingOpen(true)}
         isGuideActive={isGuideActive}
         loading={loading}
         onSimulateLockToggle={handleSimulateLock}
         isMockMode={isMockMode}
+        projectList={projectList}
+        onSwitchProject={handleSwitchProject}
+        onAddNewProject={handleAddNewProject}
+        onJoinProject={handleJoinExistingProject}
+        onOpenFolderByPath={handleOpenFolderByPath}
         myDeviceName={myDeviceName}
         onRenameMyDevice={handleRenameMyDevice}
         peers={peers}
         onPull={handlePull}
         syncingPeer={syncingPeer}
         lastSyncInfo={lastSyncInfo}
+        leftWidth={leftWidth}
+        language={language}
       />
 
-      {/* Global Notification Banner */}
+      {/* Bottom-Right Toast Notification Pop-up with Spring Slide-in Animation & Fresh Timer Reset */}
       {notification && (
-        <div className="bg-studio-blue text-white text-xs px-4 py-1.5 font-medium flex items-center justify-between shadow-sm">
-          <div className="flex items-center space-x-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-blue-200" />
-            <span>{notification}</span>
+        <div
+          key={notification.id}
+          className="fixed bottom-6 right-6 z-50 max-w-md bg-studio-surface border border-studio-border rounded-xl shadow-2xl p-3.5 flex items-center justify-between space-x-3 text-xs animate-toast backdrop-blur-md"
+        >
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-6 h-6 rounded-lg bg-studio-blue/20 border border-studio-blue/40 flex items-center justify-center text-studio-blue-light flex-shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+            <span className="text-gray-100 font-medium leading-snug">{notification.message}</span>
           </div>
           <button
-            onClick={() => setNotification(null)}
-            className="text-white/70 hover:text-white"
+            onClick={dismissNotification}
+            className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.08] transition-colors flex-shrink-0"
+            title="Dismiss"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {syncProgress && syncingPeer && (
+        <div className="fixed bottom-6 left-1/2 z-50 w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-studio-border bg-studio-surface p-4 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="font-semibold text-studio-text-primary">
+              {syncProgress.is_finished ? (language === 'id' ? 'Sinkronisasi selesai' : 'Sync complete') : language === 'id' ? 'Sinkronisasi berjalan' : 'Sync in progress'}
+            </span>
+            <span className="font-mono text-studio-blue-light">
+              {syncProgress.total_bytes > 0 ? `${Math.min(100, Math.round((syncProgress.transferred_bytes / syncProgress.total_bytes) * 100))}%` : '0%'}
+            </span>
+          </div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-studio-bg">
+            <div
+              className="h-full rounded-full bg-studio-blue transition-[width] duration-300"
+              style={{ width: `${syncProgress.total_bytes > 0 ? Math.min(100, (syncProgress.transferred_bytes / syncProgress.total_bytes) * 100) : 0}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-studio-text-muted">
+            <span className="min-w-0 truncate">{syncProgress.current_file}</span>
+            <span className="shrink-0 font-mono">{syncProgress.speed_mbps.toFixed(1)} MB/s</span>
+          </div>
         </div>
       )}
 
@@ -263,36 +526,76 @@ export function App() {
             <div className="w-12 h-12 rounded-xl bg-studio-card border border-studio-border flex items-center justify-center mx-auto text-amber-400">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-studio-text-primary">Folder Belum Terdaftar di CompSync</h2>
+            {initMode === 'choice' && <div>
+              <h2 className="text-sm font-bold text-studio-text-primary">
+                {language === 'id' ? 'Siapkan Folder Project' : 'Set Up This Project Folder'}
+              </h2>
               <p className="text-xs text-studio-text-secondary mt-1 leading-relaxed">
-                Folder <code className="text-studio-text-primary font-mono bg-studio-card px-1.5 py-0.5 rounded">{projectPath}</code> belum memiliki index versi CompSync.
+                {language === 'id' ? 'Buat project baru atau pasangkan folder ini ke project yang sudah ada.' : 'Create a new project or join this folder to an existing project.'}
               </p>
-            </div>
+            </div>}
 
-            <div className="flex items-center justify-center space-x-3 pt-2">
+            {initMode === 'choice' && <div className="grid grid-cols-2 gap-3 pt-2">
               <button
-                onClick={handleSelectFolder}
-                className="px-4 py-2 rounded-lg bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-secondary hover:text-studio-text-primary text-xs font-medium transition-colors flex items-center space-x-2"
+                onClick={() => setInitMode('create')}
+                className="rounded-lg border border-studio-blue-border bg-studio-blue/15 px-4 py-3 text-left text-xs font-semibold text-studio-blue-light transition-colors hover:bg-studio-blue/25"
               >
-                <FolderOpen className="w-3.5 h-3.5 text-studio-text-muted" />
-                <span>Pilih Folder Lain</span>
+                {language === 'id' ? 'Buat Project Baru' : 'Create New Project'}
+                <span className="mt-1 block text-[10px] font-normal text-studio-text-muted">
+                  {language === 'id' ? 'Buat ID project baru.' : 'Generate a new project ID.'}
+                </span>
               </button>
+              <button
+                onClick={() => setInitMode('join')}
+                className="rounded-lg border border-studio-border bg-studio-card px-4 py-3 text-left text-xs font-semibold text-studio-text-primary transition-colors hover:bg-studio-cardHover"
+              >
+                {language === 'id' ? 'Gabung Project' : 'Join Existing Project'}
+                <span className="mt-1 block text-[10px] font-normal text-studio-text-muted">
+                  {language === 'id' ? 'Gunakan pairing code.' : 'Use a pairing code.'}
+                </span>
+              </button>
+            </div>}
 
-              <button
-                onClick={handleInit}
-                disabled={loading}
-                className="px-5 py-2 rounded-lg bg-studio-blue hover:bg-studio-blue-hover text-white text-xs font-semibold shadow-sm transition-colors"
-              >
-                Inisialisasi Folder Ini
-              </button>
-            </div>
+            {initMode === 'create' && <div className="space-y-3 pt-2">
+              <p className="text-xs text-studio-text-secondary">
+                {language === 'id' ? 'Folder ini akan menjadi project utama dan mendapat pairing code baru.' : 'This folder will become the primary project and receive a new pairing code.'}
+              </p>
+              <div className="flex justify-center gap-3">
+                <button onClick={() => setInitMode('choice')} className="rounded-lg border border-studio-border px-4 py-2 text-xs text-studio-text-secondary hover:bg-studio-card">
+                  {language === 'id' ? 'Kembali' : 'Back'}
+                </button>
+                <button onClick={handleInit} disabled={loading} className="rounded-lg bg-studio-blue px-5 py-2 text-xs font-semibold text-white hover:bg-studio-blue-hover disabled:opacity-50">
+                  {loading ? (language === 'id' ? 'Menyiapkan...' : 'Setting up...') : language === 'id' ? 'Buat Project' : 'Create Project'}
+                </button>
+              </div>
+            </div>}
+
+            {initMode === 'join' && <form onSubmit={(event) => { event.preventDefault(); handleJoin(); }} className="space-y-3 pt-2 text-left">
+              <label className="block text-[11px] font-medium text-studio-text-secondary">
+                {language === 'id' ? 'Pairing code / Project ID' : 'Pairing code / Project ID'}
+                <input
+                  value={pairingCode}
+                  onChange={(event) => setPairingCode(event.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="mt-1 w-full rounded-lg border border-studio-border bg-studio-bg px-3 py-2 font-mono text-xs text-studio-text-primary outline-none focus:border-studio-blue"
+                  autoFocus
+                />
+              </label>
+              <div className="flex justify-center gap-3">
+                <button type="button" onClick={() => setInitMode('choice')} className="rounded-lg border border-studio-border px-4 py-2 text-xs text-studio-text-secondary hover:bg-studio-card">
+                  {language === 'id' ? 'Kembali' : 'Back'}
+                </button>
+                <button type="submit" disabled={loading || !pairingCode.trim()} className="rounded-lg bg-studio-blue px-5 py-2 text-xs font-semibold text-white hover:bg-studio-blue-hover disabled:opacity-50">
+                  {loading ? (language === 'id' ? 'Memasangkan...' : 'Joining...') : language === 'id' ? 'Pasangkan Folder' : 'Join Project'}
+                </button>
+              </div>
+            </form>}
           </div>
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-12 overflow-hidden">
-          {/* Left Column: Changes & History (~40%) */}
-          <div className="col-span-5 h-full overflow-hidden">
+        <div className={`flex-1 flex overflow-hidden ${isDraggingDivider ? 'select-none cursor-col-resize' : ''}`}>
+          {/* Stretchable Left Panel */}
+          <div style={{ width: `${leftWidth}px` }} className="h-full flex-shrink-0 overflow-hidden">
             <LeftPanel
               scanResult={scanResult}
               snapshots={snapshots}
@@ -305,11 +608,26 @@ export function App() {
               selectedSnapshotId={selectedSnapshot?.snapshot_id || null}
               onSelectSnapshot={handleSelectSnapshot}
               myDeviceName={myDeviceName}
+              language={language}
             />
           </div>
 
-          {/* Right Column: Asset Row & File/Snapshot Inspector (~60%) */}
-          <div className="col-span-7 h-full overflow-hidden">
+          {/* Draggable Divider Splitter */}
+          <div
+            onMouseDown={handleMouseDownDivider}
+            className={`w-1 cursor-col-resize flex-shrink-0 transition-colors z-20 relative group ${
+              isDraggingDivider
+                ? 'bg-studio-blue'
+                : 'bg-studio-border hover:bg-studio-blue'
+            }`}
+            title="Drag to resize sidebar"
+          >
+            {/* Invisible 16px grab hit area */}
+            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize z-10" />
+          </div>
+
+          {/* Right Panel */}
+          <div className="flex-1 h-full overflow-hidden">
             <RightPanel
               projectPath={projectPath}
               status={status}
@@ -317,10 +635,36 @@ export function App() {
               selectedFile={selectedFile}
               selectedSnapshot={selectedSnapshot}
               myDeviceName={myDeviceName}
+              scanResult={scanResult}
+              onSelectFile={handleSelectFile}
+              onCloseDetail={() => {
+                setSelectedFile(null);
+                setSelectedSnapshot(null);
+              }}
+              language={language}
             />
           </div>
         </div>
       )}
+
+      {/* Theme & General Settings Modal */}
+      <ThemeSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        selectedThemeId={selectedThemeId}
+        selectedAccentId={selectedAccentId}
+        onSelectTheme={handleSelectTheme}
+        onSelectAccent={handleSelectAccent}
+        language={language}
+        onSelectLanguage={handleSelectLanguage}
+      />
+
+      <PairingModal
+        isOpen={isPairingOpen}
+        onClose={() => setIsPairingOpen(false)}
+        pairingInfo={pairingInfo}
+        language={language}
+      />
 
       {/* Floating Non-Intrusive Guided Spotlight */}
       {isGuideActive && (
@@ -329,6 +673,7 @@ export function App() {
           onNext={() => setGuideStep((prev) => Math.min(prev + 1, 6))}
           onPrev={() => setGuideStep((prev) => Math.max(prev - 1, 1))}
           onClose={() => setIsGuideActive(false)}
+          language={language}
         />
       )}
     </div>

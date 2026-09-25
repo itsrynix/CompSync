@@ -1,8 +1,6 @@
 use clap::{Parser, Subcommand};
 use colored::*;
-use compsync_core::{
-    AepTarget, Author, IndexDb, Manifest, ManifestFileEntry, ProjectScanner,
-};
+use compsync_core::{AepTarget, Author, IndexDb, Manifest, ManifestFileEntry, ProjectScanner};
 use compsync_watcher::{check_file_lock, LockStatus};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -126,10 +124,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                      *.part\n\
                      *.tmp\n",
                 )?;
-                println!(
-                    "{} Created default .compsyncignore",
-                    "✓".green().bold()
-                );
+                println!("{} Created default .compsyncignore", "✓".green().bold());
             }
 
             println!(
@@ -215,10 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (scanned_files, _) = scanner.scan()?;
 
             if scanned_files.is_empty() {
-                println!(
-                    "{} No files found to snapshot.",
-                    "Warning:".yellow().bold()
-                );
+                println!("{} No files found to snapshot.", "Warning:".yellow().bold());
                 return Ok(());
             }
 
@@ -306,10 +298,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     process_name,
                     is_after_effects,
                 } => {
-                    println!(
-                        "{} File is LOCKED!",
-                        "!".red().bold()
-                    );
+                    println!("{} File is LOCKED!", "!".red().bold());
                     if let Some(pid) = process_id {
                         println!("  Process ID  : {}", pid);
                     }
@@ -352,7 +341,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         LockStatus::Free => "[UNLOCKED]".green(),
                         LockStatus::Locked { .. } => "[LOCKED BY AE]".red().bold(),
                     };
-                    println!("  AE Project   : {} {}", f.canonical_path.bold(), lock_badge);
+                    println!(
+                        "  AE Project   : {} {}",
+                        f.canonical_path.bold(),
+                        lock_badge
+                    );
                 }
             }
 

@@ -21,10 +21,7 @@ pub enum ProtocolError {
         chunk_index: usize,
     },
     #[error("Protocol out of sync: expected {expected}, received {received}")]
-    OutOfSync {
-        expected: String,
-        received: String,
-    },
+    OutOfSync { expected: String, received: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,6 +35,7 @@ pub struct HelloMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ChunkRequest {
+    pub path: String,
     pub file_hash: String,
     pub chunk_index: usize,
 }

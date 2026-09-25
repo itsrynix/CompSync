@@ -18,6 +18,7 @@ import {
   FileCheck,
   Laptop,
 } from 'lucide-react';
+import { Language, I18N } from '../i18n';
 
 interface Props {
   scanResult: ScanResultDto | null;
@@ -31,6 +32,7 @@ interface Props {
   selectedSnapshotId: string | null;
   onSelectSnapshot: (snap: SnapshotSummaryDto) => void;
   myDeviceName: string;
+  language?: Language;
 }
 
 export const LeftPanel: React.FC<Props> = ({
@@ -45,11 +47,13 @@ export const LeftPanel: React.FC<Props> = ({
   selectedSnapshotId,
   onSelectSnapshot,
   myDeviceName,
+  language = 'en',
 }) => {
   const [activeTab, setActiveTab] = useState<'changes' | 'history'>('changes');
   const [commitMessage, setCommitMessage] = useState('');
   const [commitDesc, setCommitDesc] = useState('');
   const [searchHistory, setSearchHistory] = useState('');
+  const t = I18N[language];
 
   const changedFiles = scanResult?.files || [];
   const modifiedCount = changedFiles.filter((f) => f.state !== 'Tersimpan').length;
@@ -77,12 +81,25 @@ export const LeftPanel: React.FC<Props> = ({
     return <FileText className="w-3.5 h-3.5 text-studio-text-muted" />;
   };
 
+  const getStatusLabel = (state: string) => {
+    if (state === 'Tersimpan') return t.statusSynced;
+    if (state === 'Diubah') return t.statusModified;
+    if (state === 'Baru') return t.statusNew;
+    return state;
+  };
+
   const filteredSnapshots = snapshots.filter((s) =>
     s.message.toLowerCase().includes(searchHistory.toLowerCase())
   );
 
+  const totalVolumeMb = scanResult?.total_mb || 0;
+  const totalVolumeDisplay =
+    totalVolumeMb >= 1024
+      ? `${(totalVolumeMb / 1024).toFixed(1)} GB`
+      : `${totalVolumeMb.toFixed(1)} MB`;
+
   return (
-    <div className="flex flex-col h-full bg-studio-sidebar border-r border-studio-border select-none">
+    <div data-tour="left-panel" className="flex flex-col h-full bg-studio-sidebar select-none">
       {/* 1. Tab Switcher (Changes vs History) */}
       <div className="flex border-b border-studio-border bg-studio-surface/50">
         <button
@@ -93,7 +110,7 @@ export const LeftPanel: React.FC<Props> = ({
               : 'border-transparent text-studio-text-muted hover:text-studio-text-secondary'
           }`}
         >
-          <span>Perubahan File</span>
+          <span>{t.changes}</span>
           {modifiedCount > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-studio-blue text-white">
               {modifiedCount}
@@ -109,65 +126,65 @@ export const LeftPanel: React.FC<Props> = ({
               : 'border-transparent text-studio-text-muted hover:text-studio-text-secondary'
           }`}
         >
-          <span>Riwayat Versi</span>
+          <span>{t.history}</span>
           <span className="px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-studio-card text-studio-text-secondary">
             {snapshots.length}
           </span>
         </button>
       </div>
 
-      {/* 2. Tab: Perubahan File (Changes) */}
+      {/* 2. Tab: Changes */}
       {activeTab === 'changes' && (
-        <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Subheader & Scan Action */}
-          <div className="px-3.5 py-2 border-b border-studio-border flex items-center justify-between bg-studio-surface/30">
-            <span className="text-[11px] text-studio-text-muted">
-              {changedFiles.length > 0
-                ? `${changedFiles.length} file (${scanResult?.total_mb.toFixed(1)} MB)`
-                : 'Belum dipindai'}
+        <div data-tour="step-4" className="flex flex-col flex-1 overflow-hidden">
+          {/* Header Bar */}
+          <div className="px-3.5 py-2 border-b border-studio-border bg-studio-sidebar/70 flex items-center justify-between text-xs">
+            <span className="text-studio-text-muted font-mono text-[11px]">
+              {t.filesCount(changedFiles.length, totalVolumeDisplay)}
             </span>
+
             <button
               onClick={onScan}
               disabled={scanning}
-              className="flex items-center space-x-1.5 px-2 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-primary text-[11px] font-medium transition-colors"
+              className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-blue-light font-medium text-xs transition-colors"
+              title="Rescan directory for file changes"
             >
-              <Play className={`w-3 h-3 text-studio-blue-light ${scanning ? 'animate-spin' : ''}`} />
-              <span>{scanning ? 'Memindai...' : 'Pindai'}</span>
+              <Play className={`w-3 h-3 fill-current ${scanning ? 'animate-spin' : ''}`} />
+              <span>{scanning ? t.scanning : t.scan}</span>
             </button>
           </div>
 
           {/* Changed Files List */}
           <div className="flex-1 overflow-y-auto divide-y divide-studio-borderSubtle">
             {changedFiles.length === 0 ? (
-              <div className="p-8 text-center text-studio-text-muted text-xs space-y-2">
-                <FileCheck className="w-8 h-8 text-studio-text-muted mx-auto opacity-40" />
-                <p className="font-medium text-studio-text-secondary">Tidak ada perubahan terdeteksi.</p>
-                <p className="text-[11px] text-studio-text-muted max-w-xs mx-auto">
-                  Klik "Pindai" untuk memeriksa file baru atau editan di folder project.
-                </p>
+              <div className="p-8 text-center text-studio-text-muted text-xs flex flex-col items-center justify-center space-y-2">
+                <CheckCircle className="w-8 h-8 text-studio-green-text opacity-70" />
+                <p>{t.allSynced}</p>
+                <p className="text-[11px] text-studio-text-muted">{t.noNewChanges}</p>
               </div>
             ) : (
-              changedFiles.map((file, idx) => {
+              changedFiles.map((file) => {
                 const isSelected = selectedFile?.path === file.path;
                 return (
                   <div
-                    key={idx}
+                    key={file.path}
                     onClick={() => onSelectFile(file)}
-                    className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors text-xs ${
+                    className={`px-3 py-2 cursor-pointer transition-colors text-xs flex items-center justify-between group ${
                       isSelected
-                        ? 'bg-studio-card border-l-2 border-studio-blue'
+                        ? 'bg-studio-blue/15 border-l-2 border-studio-blue'
                         : 'hover:bg-studio-card/60'
                     }`}
                   >
-                    <div className="flex items-center space-x-2.5 min-w-0 pr-2">
-                      {getFileIcon(file.path)}
+                    <div className="flex items-center space-x-2.5 truncate pr-2">
+                      <div className="flex-shrink-0">
+                        {getFileIcon(file.path)}
+                      </div>
                       <div className="truncate">
-                        <p className="font-medium text-studio-text-primary truncate leading-tight">
+                        <span className="font-medium text-studio-text-primary block truncate">
                           {file.path.split('/').pop()}
-                        </p>
-                        <p className="text-[10px] text-studio-text-muted truncate leading-none mt-0.5 font-mono">
+                        </span>
+                        <span className="text-[10px] text-studio-text-muted font-mono block truncate">
                           {file.path}
-                        </p>
+                        </span>
                       </div>
                     </div>
 
@@ -186,7 +203,7 @@ export const LeftPanel: React.FC<Props> = ({
                             : 'bg-studio-card text-studio-text-muted border-studio-border'
                         }`}
                       >
-                        {file.state}
+                        {getStatusLabel(file.state)}
                       </span>
                     </div>
                   </div>
@@ -195,55 +212,63 @@ export const LeftPanel: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Bottom Commit Box (Simplified GitHub Desktop Style) */}
+          {/* Bottom Commit Box (Authentic GitHub Desktop Proportion & Layout) */}
           <form
             onSubmit={handleCommitSubmit}
-            className="p-3 border-t border-studio-border bg-studio-surface/40 space-y-2"
+            data-tour="step-5"
+            className="p-3.5 border-t border-studio-border bg-studio-sidebar space-y-2.5 flex-shrink-0"
           >
-            <div className="flex items-center justify-between text-[11px] text-studio-text-muted">
-              <span>Simpan Versi (Snapshot)</span>
-              <span className="text-[10px] text-studio-blue-light font-mono flex items-center space-x-1">
-                <Laptop className="w-2.5 h-2.5" />
-                <span>{myDeviceName}</span>
-              </span>
+            {/* Top row: Avatar + Summary Input */}
+            <div className="flex items-center space-x-2.5">
+              <div
+                className="w-7 h-7 rounded-full bg-studio-blue/20 border border-studio-blue-border text-studio-blue-light font-bold text-xs flex items-center justify-center flex-shrink-0 select-none shadow-sm"
+                title={`Device: ${myDeviceName}`}
+              >
+                {myDeviceName.charAt(0).toUpperCase() || 'U'}
+              </div>
+
+              <input
+                type="text"
+                value={commitMessage}
+                onChange={(e) => setCommitMessage(e.target.value)}
+                placeholder={t.summaryPlaceholder}
+                required
+                className="flex-1 px-3 py-1.5 rounded-lg bg-studio-bg border border-studio-border focus:border-studio-blue focus:outline-none text-xs text-studio-text-primary placeholder:text-studio-text-muted transition-colors"
+              />
             </div>
 
-            <input
-              type="text"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder="Ringkasan revisi (contoh: Koreksi warna scene 1)..."
-              required
-              className="w-full px-2.5 py-1.5 rounded bg-studio-sidebar border border-studio-border focus:border-studio-blue focus:outline-none text-xs text-studio-text-primary placeholder-studio-text-muted transition-colors"
-            />
+            {/* Description Textarea (Taller, GitHub Desktop style) */}
+            <div className="relative">
+              <textarea
+                value={commitDesc}
+                onChange={(e) => setCommitDesc(e.target.value)}
+                placeholder={t.descriptionPlaceholder}
+                className="w-full h-24 px-3 py-2 rounded-lg bg-studio-bg border border-studio-border focus:border-studio-blue focus:outline-none text-xs text-studio-text-primary placeholder:text-studio-text-muted resize-none leading-relaxed transition-colors"
+              />
+            </div>
 
-            <textarea
-              value={commitDesc}
-              onChange={(e) => setCommitDesc(e.target.value)}
-              placeholder="Catatan tambahan (opsional)..."
-              rows={2}
-              className="w-full px-2.5 py-1.5 rounded bg-studio-sidebar border border-studio-border focus:border-studio-blue focus:outline-none text-xs text-studio-text-primary placeholder-studio-text-muted resize-none transition-colors"
-            />
-
+            {/* Commit Button (Tall & prominent with file count badge like GitHub Desktop) */}
             <button
               type="submit"
               disabled={creatingSnapshot || !commitMessage.trim()}
-              className={`w-full py-2 rounded-md font-semibold text-xs text-white shadow-sm transition-all flex items-center justify-center space-x-1.5 ${
+              className={`w-full py-2.5 rounded-lg font-semibold text-xs text-white shadow-md transition-all flex items-center justify-center space-x-2 ${
                 creatingSnapshot || !commitMessage.trim()
                   ? 'bg-studio-card text-studio-text-muted cursor-not-allowed border border-studio-border'
-                  : 'bg-studio-blue hover:bg-studio-blue-hover'
+                  : 'bg-studio-blue hover:bg-studio-blue-hover active:scale-[0.99]'
               }`}
             >
-              <GitCommit className={`w-3.5 h-3.5 ${creatingSnapshot ? 'animate-spin' : ''}`} />
+              <GitCommit className={`w-4 h-4 ${creatingSnapshot ? 'animate-spin' : ''}`} />
               <span>
-                {creatingSnapshot ? 'Menyimpan Versi...' : 'Simpan Versi ke Snapshot'}
+                {creatingSnapshot
+                  ? t.savingSnapshot
+                  : t.commitToSnapshot(modifiedCount)}
               </span>
             </button>
           </form>
         </div>
       )}
 
-      {/* 3. Tab: Riwayat Versi (History) */}
+      {/* 3. Tab: History */}
       {activeTab === 'history' && (
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* History Search */}
@@ -254,7 +279,7 @@ export const LeftPanel: React.FC<Props> = ({
                 type="text"
                 value={searchHistory}
                 onChange={(e) => setSearchHistory(e.target.value)}
-                placeholder="Cari riwayat revisi..."
+                placeholder={t.searchHistory}
                 className="w-full pl-8 pr-2.5 py-1 rounded bg-studio-sidebar border border-studio-border text-xs text-studio-text-primary placeholder-studio-text-muted focus:border-studio-blue focus:outline-none"
               />
             </div>
@@ -264,7 +289,7 @@ export const LeftPanel: React.FC<Props> = ({
           <div className="flex-1 overflow-y-auto divide-y divide-studio-borderSubtle">
             {filteredSnapshots.length === 0 ? (
               <div className="p-8 text-center text-studio-text-muted text-xs">
-                Tidak ada riwayat versi yang cocok.
+                {t.noMatchingHistory}
               </div>
             ) : (
               filteredSnapshots.map((snap) => {
@@ -296,7 +321,7 @@ export const LeftPanel: React.FC<Props> = ({
                       <span>•</span>
                       <span>{new Date(snap.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       <span>•</span>
-                      <span>{snap.total_files} file</span>
+                      <span>{snap.total_files} files</span>
                     </div>
                   </div>
                 );

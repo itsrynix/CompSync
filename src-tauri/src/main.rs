@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -64,6 +65,13 @@ pub struct SnapshotSummaryDto {
     pub author_name: String,
     pub total_files: usize,
     pub total_mb: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PairingInfoDto {
+    pub project_id: String,
+    pub project_name: String,
+    pub pairing_code: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -145,7 +153,12 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
                 let file_name = entry.file_name();
                 let name = file_name.to_string_lossy();
 
-                if name.starts_with('.') || name == "target" || name == "node_modules" || name == "build" || name == "dist" {
+                if name.starts_with('.')
+                    || name == "target"
+                    || name == "node_modules"
+                    || name == "build"
+                    || name == "dist"
+                {
                     continue;
                 }
 
@@ -178,9 +191,17 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
                                 },
                             };
 
-                            let canonical = p.strip_prefix(&root).unwrap_or(&p).to_string_lossy().to_string();
+                            let canonical = p
+                                .strip_prefix(&root)
+                                .unwrap_or(&p)
+                                .to_string_lossy()
+                                .to_string();
                             aep_files.push(AepFileStatus {
-                                file_name: p.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                                file_name: p
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .to_string(),
                                 canonical_path: canonical,
                                 lock,
                             });
@@ -197,9 +218,21 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
                 let mut disc_lock = ACTIVE_DISCOVERY.write().await;
                 if disc_lock.is_none() {
                     let disc = DiscoveryManager::new(whoami_device_id(), uuid);
-                    disc.start_listener();
                     let is_any_locked = aep_files.iter().any(|f| f.lock.is_locked);
                     let locked_flag = Arc::new(RwLock::new(is_any_locked));
+                    let sync_engine = SyncEngine::new(
+                        root.clone(),
+                        whoami_device_id(),
+                        whoami_device_name(),
+                        uuid,
+                    );
+
+                    sync_engine
+                        .run_server(DEFAULT_TCP_PORT, Arc::clone(&locked_flag))
+                        .await
+                        .map_err(|e| format!("Gagal membuka port sync TCP: {e}"))?;
+
+                    disc.start_listener();
                     disc.start_announcer(whoami_device_name(), DEFAULT_TCP_PORT, locked_flag);
                     *disc_lock = Some(disc);
                 }
@@ -219,27 +252,78 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
 #[tauri::command]
 async fn init_project(path: String) -> Result<String, String> {
     let root = PathBuf::from(&path);
-    let compsync_dir = root.join(".compsync");
+    let project_name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "AE_Project".to_string());
 
-    fs::create_dir_all(&compsync_dir).map_err(|e| e.to_string())?;
-    fs::create_dir_all(compsync_dir.join("objects").join("snapshots")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(compsync_dir.join("staging")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(compsync_dir.join("locks")).map_err(|e| e.to_string())?;
+    let project_id = initialize_project_layout(&root, Uuid::new_v4(), project_name)?;
+
+    Ok(project_id)
+}
+
+#[tauri::command]
+async fn get_pairing_info(path: String) -> Result<PairingInfoDto, String> {
+    let config_path = PathBuf::from(&path).join(".compsync").join("config.json");
+    let config_bytes = fs::read(config_path).map_err(|e| e.to_string())?;
+    let config: RepoConfig = serde_json::from_slice(&config_bytes).map_err(|e| e.to_string())?;
+
+    Ok(PairingInfoDto {
+        project_id: config.project_id.to_string(),
+        project_name: config.project_name.clone(),
+        pairing_code: config.project_id.to_string(),
+    })
+}
+
+#[tauri::command]
+async fn join_project(path: String, pairing_code: String) -> Result<String, String> {
+    let root = PathBuf::from(&path);
+    let project_id = Uuid::parse_str(pairing_code.trim())
+        .map_err(|_| "Pairing code tidak valid. Masukkan Project ID lengkap.".to_string())?;
+    let compsync_dir = root.join(".compsync");
+    let config_path = compsync_dir.join("config.json");
+
+    if config_path.exists() {
+        let config_bytes = fs::read(&config_path).map_err(|e| e.to_string())?;
+        let existing: RepoConfig = serde_json::from_slice(&config_bytes)
+            .map_err(|_| "Folder ini memiliki konfigurasi CompSync yang rusak.".to_string())?;
+        if existing.project_id != project_id {
+            return Err("Folder ini sudah terhubung ke project lain.".to_string());
+        }
+        return Ok(existing.project_id.to_string());
+    }
 
     let project_name = root
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "AE_Project".to_string());
 
+    initialize_project_layout(&root, project_id, project_name)
+}
+
+fn initialize_project_layout(
+    root: &PathBuf,
+    project_id: Uuid,
+    project_name: String,
+) -> Result<String, String> {
+    let compsync_dir = root.join(".compsync");
+
+    fs::create_dir_all(&compsync_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(compsync_dir.join("objects").join("snapshots"))
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(compsync_dir.join("staging")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(compsync_dir.join("locks")).map_err(|e| e.to_string())?;
+
     let config = RepoConfig {
-        project_id: Uuid::new_v4(),
+        project_id,
         project_name,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
     fs::write(
         compsync_dir.join("config.json"),
         serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?,
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     let _db = IndexDb::open(&compsync_dir.join("index.db")).map_err(|e| e.to_string())?;
 
@@ -267,7 +351,7 @@ async fn init_project(path: String) -> Result<String, String> {
         );
     }
 
-    Ok(config.project_id.to_string())
+    Ok(project_id.to_string())
 }
 
 #[tauri::command]
@@ -275,8 +359,7 @@ async fn scan_project(path: String) -> Result<ScanResultDto, String> {
     let root = PathBuf::from(&path);
     let compsync_dir = root.join(".compsync");
 
-    let db = IndexDb::open(&compsync_dir.join("index.db"))
-        .map_err(|e| e.to_string())?;
+    let db = IndexDb::open(&compsync_dir.join("index.db")).map_err(|e| e.to_string())?;
     let scanner = ProjectScanner::new(&root, &db);
 
     let (scanned_files, summary) = scanner.scan().map_err(|e| e.to_string())?;
@@ -376,7 +459,9 @@ async fn create_snapshot(path: String, message: String) -> Result<String, String
         manifest_entries,
     );
 
-    manifest.save_to_objects(&compsync_dir).map_err(|e| e.to_string())?;
+    manifest
+        .save_to_objects(&compsync_dir)
+        .map_err(|e| e.to_string())?;
 
     Ok(manifest.snapshot_id)
 }
@@ -424,7 +509,12 @@ async fn get_lan_peers() -> Result<Vec<PeerInfo>, String> {
 }
 
 #[tauri::command]
-async fn pull_from_peer(path: String, peer_ip: String, peer_port: u16) -> Result<String, String> {
+async fn pull_from_peer(
+    app: tauri::AppHandle,
+    path: String,
+    peer_ip: String,
+    peer_port: u16,
+) -> Result<String, String> {
     let root = PathBuf::from(&path);
     let compsync_dir = root.join(".compsync");
 
@@ -439,7 +529,9 @@ async fn pull_from_peer(path: String, peer_ip: String, peer_port: u16) -> Result
     );
 
     let res = engine
-        .pull_from_peer(&peer_ip, peer_port, |_progress| {})
+        .pull_from_peer(&peer_ip, peer_port, move |progress| {
+            let _ = app.emit("sync-progress", progress);
+        })
         .await
         .map_err(|e| e.to_string())?;
 
@@ -469,6 +561,8 @@ fn main() {
             open_folder,
             get_project_status,
             init_project,
+            get_pairing_info,
+            join_project,
             scan_project,
             create_snapshot,
             get_snapshots,

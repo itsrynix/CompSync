@@ -1,24 +1,113 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --studio-bg: #1c1d21;
+  --studio-surface: #23252a;
+  --studio-sidebar: #1f2025;
+  --studio-card: #2a2d34;
+  --studio-card-hover: #32363e;
+  --studio-border: rgba(255, 255, 255, 0.07);
+  --studio-border-subtle: rgba(255, 255, 255, 0.035);
+  --studio-border-hover: rgba(255, 255, 255, 0.14);
+  --studio-text-primary: #e2e4e8;
+  --studio-text-secondary: #989ea8;
+  --studio-text-muted: #6c727d;
+  --studio-blue: #1473e6;
+  --studio-blue-hover: #2680eb;
+  --studio-blue-light: #4b9cf5;
+  --studio-blue-subtle: rgba(20, 115, 230, 0.14);
+  --studio-blue-border: rgba(75, 156, 245, 0.28);
+}
 
 @layer base {
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--studio-bg);
+    color: var(--studio-text-primary);
   }
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.bg-studio-bg { background-color: var(--studio-bg) !important; }
+.bg-studio-surface { background-color: var(--studio-surface) !important; }
+.bg-studio-surface\/30 { background-color: color-mix(in srgb, var(--studio-surface) 30%, transparent) !important; }
+.bg-studio-surface\/40 { background-color: color-mix(in srgb, var(--studio-surface) 40%, transparent) !important; }
+.bg-studio-surface\/50 { background-color: color-mix(in srgb, var(--studio-surface) 50%, transparent) !important; }
+.bg-studio-sidebar { background-color: var(--studio-sidebar) !important; }
+.bg-studio-sidebar\/50 { background-color: color-mix(in srgb, var(--studio-sidebar) 50%, transparent) !important; }
+.bg-studio-sidebar\/60 { background-color: color-mix(in srgb, var(--studio-sidebar) 60%, transparent) !important; }
+.bg-studio-sidebar\/70 { background-color: color-mix(in srgb, var(--studio-sidebar) 70%, transparent) !important; }
+.bg-studio-sidebar\/80 { background-color: color-mix(in srgb, var(--studio-sidebar) 80%, transparent) !important; }
+.bg-studio-sidebar\/90 { background-color: color-mix(in srgb, var(--studio-sidebar) 90%, transparent) !important; }
+.bg-studio-card { background-color: var(--studio-card) !important; }
+.bg-studio-card\/40 { background-color: color-mix(in srgb, var(--studio-card) 40%, transparent) !important; }
+.bg-studio-card\/50 { background-color: color-mix(in srgb, var(--studio-card) 50%, transparent) !important; }
+.bg-studio-card\/60 { background-color: color-mix(in srgb, var(--studio-card) 60%, transparent) !important; }
+.bg-studio-card\/70 { background-color: color-mix(in srgb, var(--studio-card) 70%, transparent) !important; }
+.bg-studio-card\/80 { background-color: color-mix(in srgb, var(--studio-card) 80%, transparent) !important; }
+.bg-studio-card\/90 { background-color: color-mix(in srgb, var(--studio-card) 90%, transparent) !important; }
+.hover\:bg-studio-card:hover,
+.hover\:bg-studio-card\/40:hover,
+.hover\:bg-studio-card\/50:hover,
+.hover\:bg-studio-card\/60:hover,
+.hover\:bg-studio-card\/70:hover,
+.hover\:bg-studio-cardHover:hover { background-color: var(--studio-card-hover) !important; }
+.hover\:bg-studio-sidebar:hover { background-color: var(--studio-sidebar) !important; }
+
+.bg-studio-blue { background-color: var(--studio-blue) !important; }
+.hover\:bg-studio-blue-hover:hover { background-color: var(--studio-blue-hover) !important; }
+.bg-studio-blue-subtle { background-color: var(--studio-blue-subtle) !important; }
+
+.border-studio-border { border-color: var(--studio-border) !important; }
+.border-studio-borderSubtle { border-color: var(--studio-border-subtle) !important; }
+.divide-studio-borderSubtle > :not([hidden]) ~ :not([hidden]) { border-color: var(--studio-border-subtle) !important; }
+.hover\:border-studio-borderHover:hover { border-color: var(--studio-border-hover) !important; }
+.border-studio-blue, .focus\:border-studio-blue:focus { border-color: var(--studio-blue) !important; }
+.border-studio-blue-border { border-color: var(--studio-blue-border) !important; }
+.ring-studio-blue { --tw-ring-color: var(--studio-blue) !important; }
+
+.text-studio-text-primary, .hover\:text-studio-text-primary:hover { color: var(--studio-text-primary) !important; }
+.text-studio-text-secondary, .hover\:text-studio-text-secondary:hover { color: var(--studio-text-secondary) !important; }
+.text-studio-text-muted { color: var(--studio-text-muted) !important; }
+.text-studio-blue-light, .hover\:text-studio-blue-light:hover { color: var(--studio-blue-light) !important; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--studio-bg); }
+::-webkit-scrollbar-thumb { background: var(--studio-card); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--studio-card-hover); }
+
+/* Keyframes for Smooth Toast Animation */
+@keyframes toastSlideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.94);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
-::-webkit-scrollbar-track {
-  background: #12141c;
+
+.animate-toast {
+  animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-::-webkit-scrollbar-thumb {
-  background: #2b3040;
-  border-radius: 3px;
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #404760;
+
+.animate-fade-in {
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

@@ -1,5 +1,10 @@
-import React from 'react';
-import { SnapshotSummaryDto, RepoStatusDto, ScannedFileDto } from '../types';
+﻿import React, { useState, useMemo } from "react";
+import {
+  SnapshotSummaryDto,
+  RepoStatusDto,
+  ScannedFileDto,
+  ScanResultDto,
+} from "../types";
 import {
   Folder,
   Layers,
@@ -11,10 +16,14 @@ import {
   FileCode,
   FileText,
   Clock,
-  HardDrive,
-  CheckCircle2,
   FolderOpen,
-} from 'lucide-react';
+  Search,
+  X,
+  Type,
+  FileQuestion,
+  Filter,
+} from "lucide-react";
+import { Language, I18N } from "../i18n";
 
 interface Props {
   projectPath: string;
@@ -23,7 +32,13 @@ interface Props {
   selectedFile: ScannedFileDto | null;
   selectedSnapshot: SnapshotSummaryDto | null;
   myDeviceName: string;
+  scanResult?: ScanResultDto | null;
+  onSelectFile?: (file: ScannedFileDto) => void;
+  onCloseDetail?: () => void;
+  language?: Language;
 }
+
+type FileCategory = "all" | "aep" | "video" | "audio" | "images" | "other";
 
 export const RightPanel: React.FC<Props> = ({
   projectPath,
@@ -32,256 +47,467 @@ export const RightPanel: React.FC<Props> = ({
   selectedFile,
   selectedSnapshot,
   myDeviceName,
+  scanResult,
+  onSelectFile,
+  onCloseDetail,
+  language = "en",
 }) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeCategory, setActiveCategory] = useState<FileCategory>("all");
+  const t = I18N[language];
+
   const primaryAep = status?.aep_files?.[0];
   const isAepLocked = primaryAep?.lock?.is_locked;
 
+  const files = scanResult?.files || [];
+
+  const getFileCategory = (path: string): FileCategory => {
+    const ext = path.split(".").pop()?.toLowerCase() || "";
+    if (ext === "aep") return "aep";
+    if (["mov", "mp4", "avi", "mkv", "mxf", "prores"].includes(ext)) return "video";
+    if (["wav", "mp3", "aac", "cfa", "m4a", "flac"].includes(ext)) return "audio";
+    if (["png", "jpg", "jpeg", "psd", "ai", "exr", "tiff", "svg"].includes(ext)) return "images";
+    return "other";
+  };
+
   const getFileIcon = (path: string) => {
-    const ext = path.split('.').pop()?.toLowerCase();
-    if (ext === 'aep') return <Layers className="w-5 h-5 text-purple-400" />;
-    if (['mov', 'mp4', 'avi', 'mkv', 'mxf', 'prores'].includes(ext || ''))
-      return <FileVideo className="w-5 h-5 text-studio-blue-light" />;
-    if (['wav', 'mp3', 'aac', 'cfa'].includes(ext || ''))
-      return <Music className="w-5 h-5 text-studio-green-text" />;
-    if (['png', 'jpg', 'jpeg', 'psd', 'ai', 'exr'].includes(ext || ''))
-      return <FileText className="w-5 h-5 text-amber-400" />;
-    return <FileCode className="w-5 h-5 text-gray-400" />;
+    const ext = path.split(".").pop()?.toLowerCase() || "";
+    if (ext === "aep") return <Layers className="w-4 h-4 text-purple-400" />;
+    if (["mov", "mp4", "avi", "mkv", "mxf", "prores"].includes(ext))
+      return <FileVideo className="w-4 h-4 text-studio-blue-light" />;
+    if (["wav", "mp3", "aac", "cfa", "m4a", "flac"].includes(ext))
+      return <Music className="w-4 h-4 text-emerald-400" />;
+    if (["png", "jpg", "jpeg", "psd", "ai", "exr", "tiff"].includes(ext))
+      return <FileText className="w-4 h-4 text-amber-400" />;
+    if (["otf", "ttf", "woff", "woff2"].includes(ext))
+      return <Type className="w-4 h-4 text-rose-400" />;
+    if (["mogrt", "json", "jsx", "prproj", "xml"].includes(ext))
+      return <FileCode className="w-4 h-4 text-cyan-400" />;
+    return <FileQuestion className="w-4 h-4 text-gray-400" />;
+  };
+
+  // Category counts
+  const counts = useMemo(() => {
+    const res: Record<FileCategory, number> = {
+      all: files.length,
+      aep: 0,
+      video: 0,
+      audio: 0,
+      images: 0,
+      other: 0,
+    };
+    files.forEach((f) => {
+      const cat = getFileCategory(f.path);
+      res[cat] = (res[cat] || 0) + 1;
+    });
+    return res;
+  }, [files]);
+
+  const filteredFiles = useMemo(() => {
+    return files.filter((f) => {
+      // Category filter
+      if (activeCategory !== "all") {
+        const cat = getFileCategory(f.path);
+        if (cat !== activeCategory) return false;
+      }
+      // Search term
+      if (searchTerm.trim()) {
+        const query = searchTerm.toLowerCase();
+        const pathMatches = f.path.toLowerCase().includes(query);
+        const stateMatches = f.state.toLowerCase().includes(query);
+        if (!pathMatches && !stateMatches) return false;
+      }
+      return true;
+    });
+  }, [files, activeCategory, searchTerm]);
+
+  const totalVolumeMb = files.reduce((acc, f) => acc + (f.size_mb || 0), 0);
+  const totalVolumeDisplay =
+    totalVolumeMb >= 1024
+      ? `${(totalVolumeMb / 1024).toFixed(1)} GB`
+      : `${totalVolumeMb.toFixed(0)} MB`;
+
+  const getStatusLabel = (state: string) => {
+    if (state === "Tersimpan") return t.statusSynced;
+    if (state === "Diubah") return t.statusModified;
+    if (state === "Baru") return t.statusNew;
+    return state;
   };
 
   return (
-    <div className="flex flex-col h-full bg-studio-bg overflow-hidden select-none">
-      {/* 1. Horizontal Row: Aset & Folder Terintegrasi (Baris Ramping) */}
-      <div className="border-b border-studio-border px-4 py-2 bg-studio-sidebar/50 flex items-center justify-between gap-2 overflow-x-auto">
-        <div className="flex items-center space-x-2 flex-shrink-0">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-studio-text-muted">
-            Aset Folder:
-          </span>
-
-          {/* Row item: AEP */}
-          <button
-            onClick={() => onOpenFolder(status?.aep_files[0]?.file_name || '')}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-primary transition-colors flex-shrink-0"
-            title="Buka file project After Effects (.aep)"
-          >
-            <Layers className="w-3 h-3 text-purple-400" />
-            <span className="font-medium max-w-[130px] truncate">
-              {status?.aep_files[0]?.file_name || 'Project.aep'}
-            </span>
-          </button>
-
-          {/* Row item: Footage */}
-          <button
-            onClick={() => onOpenFolder('Footage')}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-secondary hover:text-studio-text-primary transition-colors flex-shrink-0"
-            title="Buka folder Footage / Video di Explorer"
-          >
-            <FileVideo className="w-3 h-3 text-studio-blue-light" />
-            <span>Footage</span>
-          </button>
-
-          {/* Row item: Audio */}
-          <button
-            onClick={() => onOpenFolder('Audio')}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-secondary hover:text-studio-text-primary transition-colors flex-shrink-0"
-            title="Buka folder Audio / VO di Explorer"
-          >
-            <Music className="w-3 h-3 text-studio-green-text" />
-            <span>Audio</span>
-          </button>
-
-          {/* Row item: .compsync */}
-          <button
-            onClick={() => onOpenFolder('.compsync')}
-            className="flex items-center space-x-1.5 px-2.5 py-1 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-secondary hover:text-studio-text-primary transition-colors flex-shrink-0"
-            title="Buka database cache CompSync"
-          >
-            <FileCode className="w-3 h-3 text-amber-400" />
-            <span>.compsync</span>
-          </button>
-        </div>
-
-        {/* Action: Open main project root */}
-        <button
-          onClick={() => onOpenFolder()}
-          className="flex items-center space-x-1 text-xs text-studio-text-muted hover:text-studio-text-primary transition-colors flex-shrink-0 ml-auto"
-          title="Buka root folder project di Windows Explorer"
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          <span className="hidden lg:inline text-[11px]">Buka Root</span>
-          <ExternalLink className="w-3 h-3" />
-        </button>
-      </div>
-
-      {/* 2. Main Workspace: Detail & Inspector */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-        {selectedFile ? (
-          /* File Inspector View */
-          <div className="space-y-4">
-            <div className="bg-studio-surface border border-studio-border rounded-lg p-4 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 rounded bg-studio-card border border-studio-border">
-                    {getFileIcon(selectedFile.path)}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-studio-text-primary">
-                      {selectedFile.path.split('/').pop()}
-                    </h3>
-                    <p className="text-xs text-studio-text-muted font-mono mt-0.5">
-                      {selectedFile.path}
-                    </p>
-                  </div>
+    <div
+      data-tour="step-6"
+      className="flex flex-col h-full bg-studio-bg overflow-hidden select-none"
+    >
+      {/* Main Body: Inspector Card (if selected) + Directory Rows List with Filter Buttons */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+        {/* File Inspector Card */}
+        {selectedFile && (
+          <div className="bg-studio-surface border border-studio-border rounded-xl p-4 space-y-3 shadow-md animate-fade-in">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-lg bg-studio-card border border-studio-border">
+                  {getFileIcon(selectedFile.path)}
                 </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-studio-text-primary">
+                    {selectedFile.path.split("/").pop()}
+                  </h3>
+                  <p className="text-xs text-studio-text-muted font-mono mt-0.5">
+                    {selectedFile.path}
+                  </p>
+                </div>
+              </div>
 
+              <div className="flex items-center space-x-2">
                 <span
                   className={`text-xs px-2.5 py-0.5 rounded font-medium border ${
-                    selectedFile.state === 'Baru'
-                      ? 'bg-studio-green-subtle text-studio-green-text border-studio-green-border'
-                      : selectedFile.state === 'Diubah'
-                      ? 'bg-studio-blue-subtle text-studio-blue-light border-studio-blue-border'
-                      : 'bg-studio-card text-studio-text-secondary border-studio-border'
+                    selectedFile.state === "Baru"
+                      ? "bg-studio-green-subtle text-studio-green-text border-studio-green-border"
+                      : selectedFile.state === "Diubah"
+                      ? "bg-studio-blue-subtle text-studio-blue-light border-studio-blue-border"
+                      : "bg-studio-card text-studio-text-secondary border-studio-border"
                   }`}
                 >
-                  {selectedFile.state}
+                  {getStatusLabel(selectedFile.state)}
+                </span>
+
+                {onCloseDetail && (
+                  <button
+                    onClick={onCloseDetail}
+                    className="p-1 text-studio-text-muted hover:text-studio-text-primary rounded hover:bg-studio-card transition-colors"
+                    title={t.closeDetail}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* File Specs Grid */}
+            <div className="grid grid-cols-3 gap-3 pt-2 text-xs border-t border-studio-borderSubtle">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
+                  {t.fileSize}
+                </span>
+                <span className="font-mono text-studio-text-primary text-xs mt-0.5 block font-semibold">
+                  {selectedFile.size_mb >= 1024
+                    ? `${(selectedFile.size_mb / 1024).toFixed(2)} GB`
+                    : `${selectedFile.size_mb.toFixed(1)} MB`}
                 </span>
               </div>
-
-              {/* File Specs Grid */}
-              <div className="grid grid-cols-3 gap-3 pt-2 text-xs border-t border-studio-borderSubtle">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
-                    Ukuran File
-                  </span>
-                  <span className="font-mono text-studio-text-primary text-xs mt-0.5 block">
-                    {selectedFile.size_mb >= 1024
-                      ? `${(selectedFile.size_mb / 1024).toFixed(2)} GB`
-                      : `${selectedFile.size_mb.toFixed(1)} MB`}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
-                    Checksum Singkat
-                  </span>
-                  <span className="font-mono text-studio-text-secondary text-xs mt-0.5 block">
-                    {selectedFile.hash_short || 'N/A'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
-                    Status Sinkron
-                  </span>
-                  <span className="text-studio-text-primary text-xs mt-0.5 block">
-                    {selectedFile.state === 'Tersimpan' ? 'Sesuai Snapshot' : 'Perlu Disimpan'}
-                  </span>
-                </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
+                  {t.shortChecksum}
+                </span>
+                <span className="font-mono text-studio-text-secondary text-xs mt-0.5 block">
+                  {selectedFile.hash_short || "N/A"}
+                </span>
               </div>
-
-              {/* Specific info for AEP file */}
-              {selectedFile.path.endsWith('.aep') && (
-                <div
-                  className={`mt-3 p-3 rounded border text-xs flex items-center justify-between ${
-                    isAepLocked
-                      ? 'bg-studio-red-subtle border-studio-red-border text-studio-red-text'
-                      : 'bg-studio-green-subtle border-studio-green-border text-studio-green-text'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    {isAepLocked ? (
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    ) : (
-                      <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-                    )}
-                    <span>
-                      {isAepLocked
-                        ? `File sedang terbuka di After Effects (${primaryAep?.lock?.process_name || 'AfterFX.exe'}). Harap simpan revisi (Ctrl+S) di AE.`
-                        : 'File project bebas dari lock proses. Siap dibuat snapshot atau dikirim ke perangkat lain.'}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="pt-2 flex items-center space-x-2">
-                <button
-                  onClick={() => onOpenFolder(selectedFile.path)}
-                  className="px-3 py-1.5 rounded bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-primary transition-colors flex items-center space-x-1.5"
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>Buka di Folder</span>
-                </button>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
+                  {t.syncStatus}
+                </span>
+                <span className="text-studio-text-primary text-xs mt-0.5 block">
+                  {selectedFile.state === "Tersimpan" ? t.synced : t.needsSave}
+                </span>
               </div>
             </div>
-          </div>
-        ) : selectedSnapshot ? (
-          /* Snapshot Detail View */
-          <div className="space-y-4">
-            <div className="bg-studio-surface border border-studio-border rounded-lg p-5 space-y-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] font-mono text-studio-blue-light uppercase tracking-wider">
-                    Snapshot ID: {selectedSnapshot.snapshot_id}
-                  </span>
-                  <h3 className="text-base font-semibold text-studio-text-primary mt-1">
-                    {selectedSnapshot.message}
-                  </h3>
-                </div>
 
-                <div className="flex items-center space-x-1 text-xs text-studio-text-muted bg-studio-sidebar px-2.5 py-1 rounded border border-studio-border">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{new Date(selectedSnapshot.created_at).toLocaleTimeString()}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-xs pt-2 border-t border-studio-borderSubtle">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
-                    Perangkat / Pembuat
-                  </span>
-                  <span className="text-studio-text-primary font-medium mt-0.5 block">
-                    {selectedSnapshot.author_name}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
-                    Total Aset Terkunci
-                  </span>
-                  <span className="text-studio-text-primary font-medium mt-0.5 block">
-                    {selectedSnapshot.total_files} file ({(selectedSnapshot.total_mb / 1024).toFixed(1)} GB)
+            {/* Specific info for AEP file */}
+            {selectedFile.path.endsWith(".aep") && (
+              <div
+                className={`p-2.5 rounded-lg border text-xs flex items-center justify-between ${
+                  isAepLocked
+                    ? "bg-studio-red-subtle border-studio-red-border text-studio-red-text"
+                    : "bg-studio-green-subtle border-studio-green-border text-studio-green-text"
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  {isAepLocked ? (
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+                  )}
+                  <span>
+                    {isAepLocked
+                      ? t.aeFileLockedMsg(primaryAep?.lock?.process_name || "AfterFX.exe")
+                      : t.aeFileSafeMsg}
                   </span>
                 </div>
               </div>
+            )}
 
-              <div className="p-3 bg-studio-sidebar border border-studio-border rounded text-xs text-studio-text-secondary leading-relaxed">
-                Snapshot ini merekam seluruh kondisi file project After Effects dan aset video pada saat disimpan. Anda dapat menggunakan snapshot ini sebagai titik pemulihan.
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Default Clean State */
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">
-            <div className="w-12 h-12 rounded-xl bg-studio-surface border border-studio-border flex items-center justify-center text-studio-text-muted">
-              <Layers className="w-6 h-6 text-studio-blue-light opacity-80" />
-            </div>
-            <div>
-              <h4 className="text-xs font-semibold text-studio-text-primary">
-                Area Detail & Pemeriksaan File
-              </h4>
-              <p className="text-[11px] text-studio-text-muted max-w-sm mt-1 leading-relaxed">
-                Pilih salah satu file pada tab <strong>Perubahan File</strong> untuk melihat status dan aksinya, atau pilih riwayat versi untuk melihat detail commit.
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2 pt-2">
+            {/* Action Button */}
+            <div className="pt-1 flex items-center space-x-2">
               <button
-                onClick={() => onOpenFolder()}
-                className="px-3 py-1.5 rounded-md bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-secondary hover:text-studio-text-primary transition-colors flex items-center space-x-1.5"
+                onClick={() => onOpenFolder(selectedFile.path)}
+                className="px-3 py-1.5 rounded-lg bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-primary transition-colors flex items-center space-x-1.5"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
-                <span>Buka Folder Project</span>
+                <span>{t.openLocation}</span>
+                <ExternalLink className="w-3 h-3 text-studio-text-muted" />
               </button>
             </div>
           </div>
         )}
+
+        {/* Snapshot Detail View */}
+        {selectedSnapshot && !selectedFile && (
+          <div className="bg-studio-surface border border-studio-border rounded-xl p-4 space-y-3 shadow-md animate-fade-in">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] font-mono text-studio-blue-light uppercase tracking-wider">
+                  Snapshot ID: {selectedSnapshot.snapshot_id}
+                </span>
+                <h3 className="text-sm font-semibold text-studio-text-primary mt-0.5">
+                  {selectedSnapshot.message}
+                </h3>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1 text-xs text-studio-text-muted bg-studio-sidebar px-2 py-0.5 rounded border border-studio-border">
+                  <Clock className="w-3 h-3" />
+                  <span>
+                    {new Date(selectedSnapshot.created_at).toLocaleTimeString()}
+                  </span>
+                </div>
+                {onCloseDetail && (
+                  <button
+                    onClick={onCloseDetail}
+                    className="p-1 text-studio-text-muted hover:text-studio-text-primary rounded hover:bg-studio-card transition-colors"
+                    title={t.closeDetail}
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-studio-borderSubtle">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
+                  Author / Device
+                </span>
+                <span className="text-studio-text-primary font-medium mt-0.5 block">
+                  {selectedSnapshot.author_name}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
+                  Locked Assets
+                </span>
+                <span className="text-studio-text-primary font-medium mt-0.5 block">
+                  {selectedSnapshot.total_files} files (
+                  {(selectedSnapshot.total_mb / 1024).toFixed(1)} GB)
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 2. Directory File Section with Filter Chips & Search Bar */}
+        <div className="bg-studio-surface border border-studio-border rounded-xl overflow-hidden shadow-sm">
+          {/* Header Row: Title & Search */}
+          <div className="px-4 py-3 border-b border-studio-border bg-studio-sidebar/70 flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-2 min-w-0">
+              <Folder className="w-4 h-4 text-studio-blue-light flex-shrink-0" />
+              <span className="text-xs font-semibold text-studio-text-primary">
+                {t.projectFiles}
+              </span>
+              <span className="text-[11px] text-studio-text-muted">
+                ({files.length} • {totalVolumeDisplay})
+              </span>
+            </div>
+
+            {/* Quick Search Input */}
+            <div className="relative w-48">
+              <Search className="w-3 h-3 text-studio-text-muted absolute left-2.5 top-2.5" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={t.searchFiles}
+                className="w-full bg-studio-card border border-studio-border rounded-lg pl-7 pr-2.5 py-1 text-xs text-studio-text-primary placeholder:text-studio-text-muted focus:outline-none focus:border-studio-blue"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-2 top-2 text-studio-text-muted hover:text-studio-text-primary"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Chips Bar (All, AEP, Video, Audio, Images, Other) */}
+          <div className="px-3.5 py-2 border-b border-studio-border/60 bg-studio-sidebar/40 flex items-center gap-1.5 overflow-x-auto">
+            <button
+              onClick={() => setActiveCategory("all")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "all"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <span>{t.filterAll}</span>
+              <span className={`text-[10px] ${activeCategory === "all" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.all}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory("aep")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "aep"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <Layers className="w-3 h-3 text-purple-400" />
+              <span>{t.filterAep}</span>
+              <span className={`text-[10px] ${activeCategory === "aep" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.aep}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory("video")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "video"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <FileVideo className="w-3 h-3 text-studio-blue-light" />
+              <span>{t.filterVideo}</span>
+              <span className={`text-[10px] ${activeCategory === "video" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.video}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory("audio")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "audio"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <Music className="w-3 h-3 text-emerald-400" />
+              <span>{t.filterAudio}</span>
+              <span className={`text-[10px] ${activeCategory === "audio" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.audio}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory("images")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "images"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <FileText className="w-3 h-3 text-amber-400" />
+              <span>{t.filterImages}</span>
+              <span className={`text-[10px] ${activeCategory === "images" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.images}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveCategory("other")}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors flex items-center gap-1.5 ${
+                activeCategory === "other"
+                  ? "bg-studio-blue text-white shadow-sm"
+                  : "bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary border border-studio-border/60"
+              }`}
+            >
+              <Type className="w-3 h-3 text-rose-400" />
+              <span>{t.filterOther}</span>
+              <span className={`text-[10px] ${activeCategory === "other" ? "text-white/80" : "text-studio-text-muted"}`}>
+                {counts.other}
+              </span>
+            </button>
+          </div>
+
+          {/* Directory Rows */}
+          {filteredFiles.length === 0 ? (
+            <div className="p-8 text-center text-xs text-studio-text-muted">
+              {t.noFilesFound}
+            </div>
+          ) : (
+            <div className="divide-y divide-studio-border/50 text-xs">
+              {filteredFiles.map((file) => {
+                const isSelected = selectedFile?.path === file.path;
+                return (
+                  <div
+                    key={file.path}
+                    onClick={() => onSelectFile && onSelectFile(file)}
+                    className={`px-4 py-2.5 flex items-center justify-between transition-colors cursor-pointer group ${
+                      isSelected
+                        ? "bg-studio-blue/15 border-l-2 border-studio-blue"
+                        : "hover:bg-studio-card/60"
+                    }`}
+                  >
+                    {/* Left: Icon + Name + Path */}
+                    <div className="flex items-center space-x-3 min-w-0 flex-1 pr-3">
+                      <div className="flex-shrink-0">
+                        {getFileIcon(file.path)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-studio-text-primary truncate">
+                          {file.path.split("/").pop()}
+                        </div>
+                        <div className="text-[10px] font-mono text-studio-text-muted truncate mt-0.5">
+                          {file.path}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Size + State Badge + Checksum + Explorer Button */}
+                    <div className="flex items-center space-x-3 flex-shrink-0">
+                      <span className="font-mono text-studio-text-secondary text-[11px] w-18 text-right">
+                        {file.size_mb >= 1024
+                          ? `${(file.size_mb / 1024).toFixed(1)} GB`
+                          : `${file.size_mb.toFixed(1)} MB`}
+                      </span>
+
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                          file.state === "Baru"
+                            ? "bg-studio-green-subtle text-studio-green-text border-studio-green-border"
+                            : file.state === "Diubah"
+                            ? "bg-studio-blue-subtle text-studio-blue-light border-studio-blue-border"
+                            : "bg-studio-card text-studio-text-muted border-studio-border"
+                        }`}
+                      >
+                        {getStatusLabel(file.state)}
+                      </span>
+
+                      <span className="font-mono text-[10px] text-studio-text-muted hidden md:inline-block w-16 text-center">
+                        {file.hash_short || "—"}
+                      </span>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenFolder(file.path);
+                        }}
+                        className="p-1 rounded-md bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors"
+                        title={t.openInExplorer}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

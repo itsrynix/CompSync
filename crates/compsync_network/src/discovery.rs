@@ -60,7 +60,12 @@ impl DiscoveryManager {
     }
 
     /// Spawns UDP broadcast sender to announce presence to the local network
-    pub fn start_announcer(&self, device_name: String, tcp_port: u16, is_locked_flag: Arc<RwLock<bool>>) {
+    pub fn start_announcer(
+        &self,
+        device_name: String,
+        tcp_port: u16,
+        is_locked_flag: Arc<RwLock<bool>>,
+    ) {
         let my_dev_id = self.my_device_id.clone();
         let my_proj_id = self.my_project_id;
 

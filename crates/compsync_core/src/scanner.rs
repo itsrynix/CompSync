@@ -135,9 +135,31 @@ impl<'a> ProjectScanner<'a> {
                         Some(ref c)
                             if c.size_bytes == size_bytes && c.mtime_epoch_ms == mtime_epoch_ms =>
                         {
-                            // Unchanged file - cache hit, 0 I/O hashing needed!
-                            summary.cached_files += 1;
-                            (c.blake3_hash.clone(), FileChangeState::Unchanged, None)
+                            if size_bytes > blake3_hasher::CHUNK_SIZE as u64 {
+                                // Large cached files still need chunk hashes for transfer manifests.
+                                summary.hashed_files += 1;
+                                summary.hashed_bytes += size_bytes;
+                                let hash_res = blake3_hasher::hash_file(&path)?;
+                                let state = if hash_res.whole_file_hash == c.blake3_hash {
+                                    FileChangeState::Unchanged
+                                } else {
+                                    FileChangeState::Modified
+                                };
+
+                                self.db.upsert(&CachedFile {
+                                    canonical_path: canonical_path.clone(),
+                                    size_bytes,
+                                    mtime_epoch_ms,
+                                    blake3_hash: hash_res.whole_file_hash.clone(),
+                                    last_scanned: now_epoch_ms,
+                                })?;
+
+                                (hash_res.whole_file_hash, state, Some(hash_res.chunks))
+                            } else {
+                                // Small unchanged file - cache hit, no hashing needed.
+                                summary.cached_files += 1;
+                                (c.blake3_hash.clone(), FileChangeState::Unchanged, None)
+                            }
                         }
                         Some(_) => {
                             // Modified file - hash needed
@@ -159,11 +181,7 @@ impl<'a> ProjectScanner<'a> {
                                 last_scanned: now_epoch_ms,
                             })?;
 
-                            (
-                                hash_res.whole_file_hash,
-                                FileChangeState::Modified,
-                                chunks,
-                            )
+                            (hash_res.whole_file_hash, FileChangeState::Modified, chunks)
                         }
                         None => {
                             // Added file - hash needed

@@ -54,3 +54,19 @@ export interface PeerInfo {
   is_locked: boolean;
   last_seen_epoch_secs: number;
 }
+
+export interface PairingInfo {
+  project_id: string;
+  project_name: string;
+  pairing_code: string;
+}
+
+export interface SyncProgress {
+  total_bytes: number;
+  transferred_bytes: number;
+  total_chunks: number;
+  completed_chunks: number;
+  current_file: string;
+  speed_mbps: number;
+  is_finished: boolean;
+}

@@ -70,7 +70,10 @@ mod tests {
 
         assert!(filter.is_ignored(Path::new("Adobe After Effects Auto-Save"), true));
         assert!(filter.is_ignored(Path::new("Adobe After Effects Auto-Save/auto1.aep"), false));
-        assert!(filter.is_ignored(Path::new("Project After Effects Disk Cache/cache.dat"), false));
+        assert!(filter.is_ignored(
+            Path::new("Project After Effects Disk Cache/cache.dat"),
+            false
+        ));
         assert!(filter.is_ignored(Path::new("footage/preview.cfa"), false));
         assert!(filter.is_ignored(Path::new(".compsync/index.db"), false));
         assert!(filter.is_ignored(Path::new("Thumbs.db"), false));

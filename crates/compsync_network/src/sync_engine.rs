@@ -1,6 +1,5 @@
 use crate::protocol::{
-    ChunkFrame, ChunkRequest, HelloMessage, Message, ProtocolError,
-    MAX_FRAME_SIZE,
+    ChunkFrame, ChunkRequest, HelloMessage, Message, ProtocolError, MAX_FRAME_SIZE,
 };
 use crate::staging::StagingFile;
 use compsync_core::manifest::Manifest;
@@ -161,10 +160,15 @@ impl SyncEngine {
                 }
                 Message::RequestChunks { requests } => {
                     for req in requests {
-                        if let Some(chunk_frame) =
-                            Self::read_local_chunk(&project_root, &req.file_hash, req.chunk_index)
-                        {
-                            framed.send(Message::ChunkData(chunk_frame).encode()?).await?;
+                        if let Some(chunk_frame) = Self::read_local_chunk(
+                            &project_root,
+                            &req.path,
+                            &req.file_hash,
+                            req.chunk_index,
+                        ) {
+                            framed
+                                .send(Message::ChunkData(chunk_frame).encode()?)
+                                .await?;
                         }
                     }
                 }
@@ -180,40 +184,30 @@ impl SyncEngine {
 
     fn read_local_chunk(
         project_root: &Path,
+        relative_path: &str,
         file_hash: &str,
         chunk_index: usize,
     ) -> Option<ChunkFrame> {
-        let mut dirs = vec![project_root.to_path_buf()];
-        while let Some(dir) = dirs.pop() {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        if entry.file_name() != ".compsync" {
-                            dirs.push(p);
-                        }
-                    } else if p.is_file() {
-                        let offset = (chunk_index * CHUNK_SIZE) as u64;
-                        if let Ok(mut file) = File::open(&p) {
-                            if let Ok(meta) = file.metadata() {
-                                if meta.len() > offset {
-                                    let mut buffer = vec![0u8; CHUNK_SIZE];
-                                    if file.seek(SeekFrom::Start(offset)).is_ok() {
-                                        if let Ok(read_bytes) = file.read(&mut buffer) {
-                                            if read_bytes > 0 {
-                                                buffer.truncate(read_bytes);
-                                                return Some(ChunkFrame {
-                                                    file_hash: file_hash.to_string(),
-                                                    chunk_index,
-                                                    offset,
-                                                    length: read_bytes,
-                                                    data: buffer,
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+        let path = project_root.join(relative_path);
+        if !path.starts_with(project_root) || !path.is_file() {
+            return None;
+        }
+
+        let offset = (chunk_index * CHUNK_SIZE) as u64;
+        if let Ok(mut file) = File::open(path) {
+            if let Ok(meta) = file.metadata() {
+                if meta.len() > offset {
+                    let chunk_length = (meta.len() - offset).min(CHUNK_SIZE as u64) as usize;
+                    let mut buffer = vec![0u8; chunk_length];
+                    if file.seek(SeekFrom::Start(offset)).is_ok() {
+                        if file.read_exact(&mut buffer).is_ok() {
+                            return Some(ChunkFrame {
+                                file_hash: file_hash.to_string(),
+                                chunk_index,
+                                offset,
+                                length: buffer.len(),
+                                data: buffer,
+                            });
                         }
                     }
                 }
@@ -327,6 +321,7 @@ impl SyncEngine {
                 let requests: Vec<ChunkRequest> = missing_chunks
                     .into_iter()
                     .map(|idx| ChunkRequest {
+                        path: file_entry.path.clone(),
                         file_hash: file_entry.blake3_hash.clone(),
                         chunk_index: idx,
                     })
@@ -340,6 +335,15 @@ impl SyncEngine {
                     if let Some(Ok(frame)) = framed.next().await {
                         let msg = Message::decode(&frame)?;
                         if let Message::ChunkData(chunk) = msg {
+                            if chunk.file_hash != file_entry.blake3_hash
+                                || chunk.chunk_index >= num_chunks
+                            {
+                                return Err(ProtocolError::ChunkCorrupted {
+                                    file_hash: file_entry.blake3_hash.clone(),
+                                    chunk_index: chunk.chunk_index,
+                                });
+                            }
+
                             let expected_chunk_hash = if let Some(ref chunks) = file_entry.chunks {
                                 chunks
                                     .iter()
@@ -377,10 +381,18 @@ impl SyncEngine {
                                     speed_mbps: speed,
                                     is_finished: false,
                                 });
+                            } else {
+                                return Err(ProtocolError::ChunkCorrupted {
+                                    file_hash: file_entry.blake3_hash.clone(),
+                                    chunk_index: chunk.chunk_index,
+                                });
                             }
                         }
                     } else {
-                        break;
+                        return Err(ProtocolError::OutOfSync {
+                            expected: "ChunkData".into(),
+                            received: "EOF".into(),
+                        });
                     }
                 }
             }

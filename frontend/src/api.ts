@@ -1,4 +1,4 @@
-import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo } from './types';
+import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo, PairingInfo } from './types';
 
 // Mock storage for local browser development
 let mockStatus: RepoStatusDto = {
@@ -78,6 +78,14 @@ async function callTauri<T>(cmd: string, args: Record<string, any> = {}): Promis
     return mockStatus as T;
   }
 
+  if (cmd === 'get_pairing_info') {
+    return {
+      project_id: mockStatus.project_id || '',
+      project_name: mockStatus.project_name || 'AE_Project',
+      pairing_code: mockStatus.project_id || '',
+    } as T;
+  }
+
   if (cmd === 'select_folder') {
     const demoFolders = [
       'D:/Studio_Projects/Commercial_AE_2026',
@@ -119,6 +127,12 @@ async function callTauri<T>(cmd: string, args: Record<string, any> = {}): Promis
     return mockPeers as T;
   }
 
+  if (cmd === 'join_project') {
+    mockStatus.project_id = args.pairingCode;
+    mockStatus.is_initialized = true;
+    return args.pairingCode as T;
+  }
+
   if (cmd === 'pull_from_peer') {
     return 'c84a10f9' as T;
   }
@@ -131,6 +145,9 @@ export const api = {
   openFolder: (path: string) => callTauri<void>('open_folder', { path }),
   getStatus: (path: string) => callTauri<RepoStatusDto>('get_project_status', { path }),
   initProject: (path: string) => callTauri<string>('init_project', { path }),
+  getPairingInfo: (path: string) => callTauri<PairingInfo>('get_pairing_info', { path }),
+  joinProject: (path: string, pairingCode: string) =>
+    callTauri<string>('join_project', { path, pairingCode }),
   scan: (path: string) => callTauri<ScanResultDto>('scan_project', { path }),
   snapshot: (path: string, message: string) => callTauri<string>('create_snapshot', { path, message }),
   getSnapshots: (path: string) => callTauri<SnapshotSummaryDto[]>('get_snapshots', { path }),
