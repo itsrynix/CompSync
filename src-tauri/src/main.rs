@@ -78,11 +78,31 @@ lazy_static::lazy_static! {
 }
 
 #[tauri::command]
+async fn select_folder() -> Result<Option<String>, String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Pilih Folder Project After Effects")
+        .pick_folder()
+        .await;
+
+    Ok(folder.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+async fn open_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
     let root = PathBuf::from(&path);
-    let compsync_dir = root.join(".compsync");
-
-    if !compsync_dir.exists() {
+    if !root.exists() {
         return Ok(RepoStatusDto {
             is_initialized: false,
             project_id: None,
@@ -92,28 +112,52 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
         });
     }
 
-    let config_bytes = fs::read(compsync_dir.join("config.json"))
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    let config: RepoConfig = serde_json::from_slice(&config_bytes)
-        .map_err(|e| format!("Invalid config: {}", e))?;
+    let compsync_dir = root.join(".compsync");
+    let is_initialized = compsync_dir.exists();
 
-    let db = IndexDb::open(&compsync_dir.join("index.db"))
-        .map_err(|e| format!("DB error: {}", e))?;
-    let cached = db.get_all().map_err(|e| format!("DB error: {}", e))?;
+    let mut project_id = None;
+    let mut project_name = None;
+    let mut indexed_files_count = 0;
 
+    if is_initialized {
+        if let Ok(config_bytes) = fs::read(compsync_dir.join("config.json")) {
+            if let Ok(config) = serde_json::from_slice::<RepoConfig>(&config_bytes) {
+                project_id = Some(config.project_id.to_string());
+                project_name = Some(config.project_name);
+            }
+        }
+
+        if let Ok(db) = IndexDb::open(&compsync_dir.join("index.db")) {
+            if let Ok(cached) = db.get_all() {
+                indexed_files_count = cached.len();
+            }
+        }
+    }
+
+    let filter = compsync_core::IgnoreFilter::new(&root);
     let mut aep_files = Vec::new();
     let mut dirs = vec![root.clone()];
+
     while let Some(dir) = dirs.pop() {
-        if let Ok(entries) = fs::read_dir(dir) {
+        if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let p = entry.path();
+                let file_name = entry.file_name();
+                let name = file_name.to_string_lossy();
+
+                if name.starts_with('.') || name == "target" || name == "node_modules" || name == "build" || name == "dist" {
+                    continue;
+                }
+
+                if filter.is_ignored(&p, p.is_dir()) {
+                    continue;
+                }
+
                 if p.is_dir() {
-                    if entry.file_name() != ".compsync" {
-                        dirs.push(p);
-                    }
+                    dirs.push(p);
                 } else if p.is_file() {
                     if let Some(ext) = p.extension() {
-                        if ext == "aep" {
+                        if ext.eq_ignore_ascii_case("aep") {
                             let lock_res = check_file_lock(&p);
                             let lock = match lock_res {
                                 LockStatus::Free => LockInfo {
@@ -147,22 +191,28 @@ async fn get_project_status(path: String) -> Result<RepoStatusDto, String> {
         }
     }
 
-    let mut disc_lock = ACTIVE_DISCOVERY.write().await;
-    if disc_lock.is_none() {
-        let disc = DiscoveryManager::new(whoami_device_id(), config.project_id);
-        disc.start_listener();
-        let is_any_locked = aep_files.iter().any(|f| f.lock.is_locked);
-        let locked_flag = Arc::new(RwLock::new(is_any_locked));
-        disc.start_announcer(whoami_device_name(), DEFAULT_TCP_PORT, locked_flag);
-        *disc_lock = Some(disc);
+    if is_initialized {
+        if let Some(ref pid_str) = project_id {
+            if let Ok(uuid) = Uuid::parse_str(pid_str) {
+                let mut disc_lock = ACTIVE_DISCOVERY.write().await;
+                if disc_lock.is_none() {
+                    let disc = DiscoveryManager::new(whoami_device_id(), uuid);
+                    disc.start_listener();
+                    let is_any_locked = aep_files.iter().any(|f| f.lock.is_locked);
+                    let locked_flag = Arc::new(RwLock::new(is_any_locked));
+                    disc.start_announcer(whoami_device_name(), DEFAULT_TCP_PORT, locked_flag);
+                    *disc_lock = Some(disc);
+                }
+            }
+        }
     }
 
     Ok(RepoStatusDto {
-        is_initialized: true,
-        project_id: Some(config.project_id.to_string()),
-        project_name: Some(config.project_name),
+        is_initialized,
+        project_id,
+        project_name,
         aep_files,
-        indexed_files_count: cached.len(),
+        indexed_files_count,
     })
 }
 
@@ -237,9 +287,9 @@ async fn scan_project(path: String) -> Result<ScanResultDto, String> {
             path: f.canonical_path,
             size_mb: (f.size_bytes as f64) / (1024.0 * 1024.0),
             state: match f.state {
-                FileChangeState::Added => "Added".into(),
-                FileChangeState::Modified => "Modified".into(),
-                FileChangeState::Unchanged => "Cached".into(),
+                FileChangeState::Added => "Baru".into(),
+                FileChangeState::Modified => "Diubah".into(),
+                FileChangeState::Unchanged => "Tersimpan".into(),
             },
             hash_short: if f.blake3_hash.len() >= 8 {
                 f.blake3_hash[..8].to_string()
@@ -280,7 +330,7 @@ async fn create_snapshot(path: String, message: String) -> Result<String, String
 
     let (scanned_files, _) = scanner.scan().map_err(|e| e.to_string())?;
     if scanned_files.is_empty() {
-        return Err("No files found to snapshot.".into());
+        return Err("Tidak ada file untuk disimpan dalam versi ini.".into());
     }
 
     let mut manifest_entries = Vec::new();
@@ -415,6 +465,8 @@ fn whoami_user() -> String {
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            select_folder,
+            open_folder,
             get_project_status,
             init_project,
             scan_project,

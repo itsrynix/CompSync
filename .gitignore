@@ -5,7 +5,8 @@ target/
 # Node & Frontend dependencies
 node_modules/
 **/node_modules/
-frontend/dist/
+dist/
+**/dist/
 
 # CompSync internal DB and temp files
 .compsync/
