@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import { RepoStatusDto, ScanResultDto, SnapshotSummaryDto, PeerInfo, ScannedFileDto } from './types';
-import { Header } from './components/Header';
+import { Header, ProjectItem } from './components/Header';
 import { LeftPanel } from './components/LeftPanel';
 import { RightPanel } from './components/RightPanel';
 import { InteractiveTourSpotlight } from './components/InteractiveTourSpotlight';
@@ -13,6 +13,29 @@ export function App() {
       localStorage.getItem('compsync_project_path') ||
       'c:/Users/Rynix/Documents/Adrian/Coding/CompSync'
     );
+  });
+
+  const [projectList, setProjectList] = useState<ProjectItem[]>(() => {
+    const saved = localStorage.getItem('compsync_project_list');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return [
+      {
+        name: 'Commercial_AE_2026',
+        path: 'D:/Studio_Projects/Commercial_AE_2026',
+      },
+      {
+        name: 'Explainer_Promo',
+        path: 'C:/Users/Rynix/Videos/AfterEffects/Explainer_Promo',
+      },
+      {
+        name: 'CompSync (Repo)',
+        path: 'c:/Users/Rynix/Documents/Adrian/Coding/CompSync',
+      },
+    ];
   });
 
   const [myDeviceName, setMyDeviceName] = useState<string>(() => {
@@ -96,22 +119,48 @@ export function App() {
     return () => clearInterval(interval);
   }, [projectPath]);
 
-  const handleSelectFolder = async () => {
+  const handleSwitchProject = async (path: string) => {
+    setProjectPath(path);
+    localStorage.setItem('compsync_project_path', path);
+    setScanResult(null);
+    setSelectedFile(null);
+    setSelectedSnapshot(null);
+    await refreshAll(path);
+    if (isGuideActive && guideStep === 1) {
+      setGuideStep(2);
+    }
+  };
+
+  const handleAddNewProject = async () => {
     try {
       const selected = await api.selectFolder();
       if (selected) {
-        setProjectPath(selected);
-        localStorage.setItem('compsync_project_path', selected);
-        setScanResult(null);
-        setSelectedFile(null);
-        setSelectedSnapshot(null);
-        await refreshAll(selected);
-        if (isGuideActive && guideStep === 1) {
-          setGuideStep(2);
-        }
+        const name =
+          selected.split('/').filter(Boolean).pop() ||
+          selected.split('\\').filter(Boolean).pop() ||
+          'Project After Effects';
+        const exists = projectList.some(
+          (p) => p.path.toLowerCase() === selected.toLowerCase()
+        );
+        const updated = exists
+          ? projectList
+          : [{ name, path: selected }, ...projectList];
+        setProjectList(updated);
+        localStorage.setItem('compsync_project_list', JSON.stringify(updated));
+        await handleSwitchProject(selected);
+        setNotification(`Folder "${name}" berhasil diintegrasikan ke CompSync!`);
+        setTimeout(() => setNotification(null), 4000);
       }
     } catch (err: any) {
-      alert(`Gagal memilih folder: ${err}`);
+      alert(`Gagal menambah folder: ${err}`);
+    }
+  };
+
+  const handleOpenFolderByPath = async (targetPath: string) => {
+    try {
+      await api.openFolder(targetPath);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -220,18 +269,20 @@ export function App() {
 
   return (
     <div className="flex flex-col h-screen bg-studio-bg text-studio-text-primary font-sans overflow-hidden">
-      {/* 1. Header (Simplified Sync & Identity Hub) */}
+      {/* 1. Header (Unified Project Dropdown + Device Sync Hub) */}
       <Header
         status={status}
         projectPath={projectPath}
         onRefresh={() => refreshAll()}
-        onSelectFolder={handleSelectFolder}
-        onOpenInExplorer={() => handleOpenFolder()}
         onToggleGuide={() => setIsGuideActive(!isGuideActive)}
         isGuideActive={isGuideActive}
         loading={loading}
         onSimulateLockToggle={handleSimulateLock}
         isMockMode={isMockMode}
+        projectList={projectList}
+        onSwitchProject={handleSwitchProject}
+        onAddNewProject={handleAddNewProject}
+        onOpenFolderByPath={handleOpenFolderByPath}
         myDeviceName={myDeviceName}
         onRenameMyDevice={handleRenameMyDevice}
         peers={peers}
@@ -272,7 +323,7 @@ export function App() {
 
             <div className="flex items-center justify-center space-x-3 pt-2">
               <button
-                onClick={handleSelectFolder}
+                onClick={handleAddNewProject}
                 className="px-4 py-2 rounded-lg bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-secondary hover:text-studio-text-primary text-xs font-medium transition-colors flex items-center space-x-2"
               >
                 <FolderOpen className="w-3.5 h-3.5 text-studio-text-muted" />
