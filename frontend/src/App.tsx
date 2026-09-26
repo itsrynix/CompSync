@@ -99,6 +99,7 @@ export function App() {
   const [creatingSnapshot, setCreatingSnapshot] = useState(false);
   const [syncingPeer, setSyncingPeer] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [syncCancelRequested, setSyncCancelRequested] = useState(false);
 
   // Robust notification system with timer reset and key remount
   const [notification, setNotification] = useState<{ id: number; message: string } | null>(null);
@@ -362,7 +363,19 @@ export function App() {
   const handlePull = async (peer: PeerInfo) => {
     if (!projectPath) return;
     setSyncingPeer(peer.device_id);
-    setSyncProgress(null);
+    setSyncCancelRequested(false);
+    setSyncProgress({
+      phase: 'Preparing',
+      total_bytes: 0,
+      transferred_bytes: 0,
+      total_chunks: 0,
+      completed_chunks: 0,
+      current_file: '',
+      current_file_index: 0,
+      total_files: 0,
+      speed_mbps: 0,
+      is_finished: false,
+    });
     try {
       await api.pullFromPeer(projectPath, peer.ip_addr, peer.tcp_port);
       setLastSyncInfo({
@@ -378,9 +391,30 @@ export function App() {
       );
       await refreshAll();
     } catch (err: any) {
-      alert(`Sync failed: ${err}`);
+      if (syncCancelRequested || String(err).toLowerCase().includes('cancel')) {
+        setSyncProgress((current) => current ? { ...current, phase: 'Cancelled', is_finished: true } : current);
+        triggerNotification(
+          language === 'id' ? 'Sinkronisasi dibatalkan.' : 'Sync cancelled.',
+          3500
+        );
+      } else {
+        alert(`Sync failed: ${err}`);
+      }
     } finally {
       setSyncingPeer(null);
+      setSyncCancelRequested(false);
+    }
+  };
+
+  const handleCancelSync = async () => {
+    if (!syncingPeer || syncCancelRequested) return;
+    setSyncCancelRequested(true);
+    setSyncProgress((current) => current ? { ...current, phase: 'Cancelling' } : current);
+    try {
+      await api.cancelSync();
+    } catch (err) {
+      setSyncCancelRequested(false);
+      console.error('Failed to cancel sync:', err);
     }
   };
 
@@ -497,24 +531,46 @@ export function App() {
       )}
 
       {syncProgress && syncingPeer && (
-        <div className="fixed bottom-6 left-1/2 z-50 w-[min(520px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-studio-border bg-studio-surface p-4 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="font-semibold text-studio-text-primary">
-              {syncProgress.is_finished ? (language === 'id' ? 'Sinkronisasi selesai' : 'Sync complete') : language === 'id' ? 'Sinkronisasi berjalan' : 'Sync in progress'}
-            </span>
-            <span className="font-mono text-studio-blue-light">
-              {syncProgress.total_bytes > 0 ? `${Math.min(100, Math.round((syncProgress.transferred_bytes / syncProgress.total_bytes) * 100))}%` : '0%'}
-            </span>
-          </div>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-studio-bg">
-            <div
-              className="h-full rounded-full bg-studio-blue transition-[width] duration-300"
-              style={{ width: `${syncProgress.total_bytes > 0 ? Math.min(100, (syncProgress.transferred_bytes / syncProgress.total_bytes) * 100) : 0}%` }}
-            />
-          </div>
-          <div className="mt-2 flex items-center justify-between gap-3 text-[10px] text-studio-text-muted">
-            <span className="min-w-0 truncate">{syncProgress.current_file}</span>
-            <span className="shrink-0 font-mono">{syncProgress.speed_mbps.toFixed(1)} MB/s</span>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 p-6 backdrop-blur-[2px]">
+          <div className="w-full max-w-xl rounded-xl border border-studio-border bg-studio-surface p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-studio-text-muted">{language === 'id' ? 'Sinkronisasi Project' : 'Project Sync'}</p>
+                <h2 className="mt-1 text-base font-semibold text-studio-text-primary">
+                  {syncProgress.phase === 'Cancelling' ? (language === 'id' ? 'Membatalkan...' : 'Cancelling...') : syncProgress.phase}
+                </h2>
+              </div>
+              <span className="font-mono text-lg font-semibold text-studio-blue-light">
+                {syncProgress.total_bytes > 0 ? `${Math.min(100, Math.round((syncProgress.transferred_bytes / syncProgress.total_bytes) * 100))}%` : '0%'}
+              </span>
+            </div>
+            <div className="mt-4 h-3 overflow-hidden rounded-full bg-studio-bg">
+              <div
+                className="h-full rounded-full bg-studio-blue transition-[width] duration-300"
+                style={{ width: `${syncProgress.total_bytes > 0 ? Math.min(100, (syncProgress.transferred_bytes / syncProgress.total_bytes) * 100) : 0}%` }}
+              />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+              <div className="min-w-0 rounded-lg border border-studio-border bg-studio-bg p-3">
+                <p className="text-[10px] uppercase tracking-wide text-studio-text-muted">{language === 'id' ? 'File aktif' : 'Current file'}</p>
+                <p className="mt-1 truncate font-medium text-studio-text-primary">{syncProgress.current_file || (language === 'id' ? 'Menyiapkan koneksi...' : 'Preparing connection...')}</p>
+                <p className="mt-1 text-[10px] text-studio-text-muted">{syncProgress.current_file_index} / {syncProgress.total_files || '-'} files</p>
+              </div>
+              <div className="rounded-lg border border-studio-border bg-studio-bg p-3">
+                <p className="text-[10px] uppercase tracking-wide text-studio-text-muted">{language === 'id' ? 'Transfer' : 'Transfer'}</p>
+                <p className="mt-1 font-medium text-studio-text-primary">{(syncProgress.transferred_bytes / (1024 * 1024)).toFixed(1)} MB / {(syncProgress.total_bytes / (1024 * 1024)).toFixed(1)} MB</p>
+                <p className="mt-1 text-[10px] text-studio-text-muted">{syncProgress.speed_mbps.toFixed(1)} MB/s</p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={handleCancelSync}
+                disabled={syncCancelRequested}
+                className="rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {syncCancelRequested ? (language === 'id' ? 'Membatalkan...' : 'Cancelling...') : language === 'id' ? 'Batalkan Sync' : 'Cancel Sync'}
+              </button>
+            </div>
           </div>
         </div>
       )}

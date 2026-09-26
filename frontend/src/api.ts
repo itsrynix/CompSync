@@ -154,6 +154,7 @@ export const api = {
   getPeers: () => callTauri<PeerInfo[]>('get_lan_peers'),
   pullFromPeer: (path: string, peerIp: string, peerPort: number) =>
     callTauri<string>('pull_from_peer', { path, peerIp, peerPort }),
+  cancelSync: () => callTauri<void>('cancel_sync'),
   
   // Dev Helper for Browser Testing
   devToggleLock: (isLocked: boolean) => {

@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 use tokio_util::codec::LengthDelimitedCodec;
@@ -18,11 +19,14 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncProgress {
+    pub phase: String,
     pub total_bytes: u64,
     pub transferred_bytes: u64,
     pub total_chunks: usize,
     pub completed_chunks: usize,
     pub current_file: String,
+    pub current_file_index: usize,
+    pub total_files: usize,
     pub speed_mbps: f64,
     pub is_finished: bool,
 }
@@ -221,11 +225,29 @@ impl SyncEngine {
         &self,
         peer_ip: &str,
         peer_port: u16,
+        cancel_flag: Arc<AtomicBool>,
         progress_cb: F,
     ) -> Result<String, ProtocolError>
     where
         F: Fn(SyncProgress) + Send + 'static,
     {
+        progress_cb(SyncProgress {
+            phase: "Preparing".into(),
+            total_bytes: 0,
+            transferred_bytes: 0,
+            total_chunks: 0,
+            completed_chunks: 0,
+            current_file: String::new(),
+            current_file_index: 0,
+            total_files: 0,
+            speed_mbps: 0.0,
+            is_finished: false,
+        });
+
+        if cancel_flag.load(Ordering::Relaxed) {
+            return Err(ProtocolError::Cancelled);
+        }
+
         let socket = TcpStream::connect(format!("{}:{}", peer_ip, peer_port))
             .await
             .map_err(ProtocolError::Io)?;
@@ -288,10 +310,28 @@ impl SyncEngine {
         std::fs::create_dir_all(&staging_root).map_err(ProtocolError::Io)?;
 
         let total_bytes = remote_manifest.stats.total_bytes;
+        let total_files = remote_manifest.tree.len();
         let mut transferred_bytes = 0u64;
         let start_time = Instant::now();
 
-        for file_entry in &remote_manifest.tree {
+        progress_cb(SyncProgress {
+            phase: "Transferring".into(),
+            total_bytes,
+            transferred_bytes,
+            total_chunks: 0,
+            completed_chunks: 0,
+            current_file: String::new(),
+            current_file_index: 0,
+            total_files,
+            speed_mbps: 0.0,
+            is_finished: false,
+        });
+
+        for (file_index, file_entry) in remote_manifest.tree.iter().enumerate() {
+            if cancel_flag.load(Ordering::Relaxed) {
+                return Err(ProtocolError::Cancelled);
+            }
+
             let dest_path = self.project_root.join(&file_entry.path);
 
             if dest_path.exists() {
@@ -332,7 +372,18 @@ impl SyncEngine {
                     .await?;
 
                 while !staging.is_complete() {
-                    if let Some(Ok(frame)) = framed.next().await {
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        return Err(ProtocolError::Cancelled);
+                    }
+
+                    let frame_result = tokio::select! {
+                        frame = framed.next() => frame,
+                        _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                            continue;
+                        }
+                    };
+
+                    if let Some(Ok(frame)) = frame_result {
                         let msg = Message::decode(&frame)?;
                         if let Message::ChunkData(chunk) = msg {
                             if chunk.file_hash != file_entry.blake3_hash
@@ -373,11 +424,14 @@ impl SyncEngine {
                                 };
 
                                 progress_cb(SyncProgress {
+                                    phase: "Transferring".into(),
                                     total_bytes,
                                     transferred_bytes,
                                     total_chunks: num_chunks,
                                     completed_chunks: chunk.chunk_index + 1,
                                     current_file: file_entry.path.clone(),
+                                    current_file_index: file_index + 1,
+                                    total_files,
                                     speed_mbps: speed,
                                     is_finished: false,
                                 });
@@ -397,7 +451,28 @@ impl SyncEngine {
                 }
             }
 
-            let _ = staging.finalize(&dest_path, &file_entry.blake3_hash);
+            progress_cb(SyncProgress {
+                phase: "Verifying".into(),
+                total_bytes,
+                transferred_bytes,
+                total_chunks: num_chunks,
+                completed_chunks: num_chunks,
+                current_file: file_entry.path.clone(),
+                current_file_index: file_index + 1,
+                total_files,
+                speed_mbps: 0.0,
+                is_finished: false,
+            });
+
+            if !staging
+                .finalize(&dest_path, &file_entry.blake3_hash)
+                .map_err(ProtocolError::Io)?
+            {
+                return Err(ProtocolError::ChunkCorrupted {
+                    file_hash: file_entry.blake3_hash.clone(),
+                    chunk_index: 0,
+                });
+            }
         }
 
         let _ = remote_manifest.save_to_objects(&self.compsync_dir);
@@ -412,11 +487,14 @@ impl SyncEngine {
             .await;
 
         progress_cb(SyncProgress {
+            phase: "Completed".into(),
             total_bytes,
             transferred_bytes: total_bytes,
             total_chunks: 100,
             completed_chunks: 100,
             current_file: "Completed".into(),
+            current_file_index: total_files,
+            total_files,
             speed_mbps: 0.0,
             is_finished: true,
         });

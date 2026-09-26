@@ -9,6 +9,7 @@ use compsync_watcher::{check_file_lock, LockStatus};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::RwLock;
@@ -83,6 +84,7 @@ struct RepoConfig {
 
 lazy_static::lazy_static! {
     static ref ACTIVE_DISCOVERY: Arc<RwLock<Option<DiscoveryManager>>> = Arc::new(RwLock::new(None));
+    static ref ACTIVE_SYNC_CANCEL: Arc<RwLock<Option<Arc<AtomicBool>>>> = Arc::new(RwLock::new(None));
 }
 
 #[tauri::command]
@@ -521,6 +523,17 @@ async fn pull_from_peer(
     let config_bytes = fs::read(compsync_dir.join("config.json")).map_err(|e| e.to_string())?;
     let config: RepoConfig = serde_json::from_slice(&config_bytes).map_err(|e| e.to_string())?;
 
+    let cancel_flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = ACTIVE_SYNC_CANCEL.write().await;
+        if active.is_some() {
+            return Err(
+                "Sync sedang berjalan. Batalkan sync aktif sebelum memulai yang baru.".into(),
+            );
+        }
+        *active = Some(Arc::clone(&cancel_flag));
+    }
+
     let engine = SyncEngine::new(
         root,
         whoami_device_id(),
@@ -529,13 +542,29 @@ async fn pull_from_peer(
     );
 
     let res = engine
-        .pull_from_peer(&peer_ip, peer_port, move |progress| {
-            let _ = app.emit("sync-progress", progress);
-        })
+        .pull_from_peer(
+            &peer_ip,
+            peer_port,
+            Arc::clone(&cancel_flag),
+            move |progress| {
+                let _ = app.emit("sync-progress", progress);
+            },
+        )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string());
 
-    Ok(res)
+    ACTIVE_SYNC_CANCEL.write().await.take();
+
+    res
+}
+
+#[tauri::command]
+async fn cancel_sync() -> Result<(), String> {
+    if let Some(cancel_flag) = ACTIVE_SYNC_CANCEL.read().await.as_ref() {
+        cancel_flag.store(true, Ordering::Relaxed);
+    }
+
+    Ok(())
 }
 
 fn whoami_device_id() -> String {
@@ -568,6 +597,7 @@ fn main() {
             get_snapshots,
             get_lan_peers,
             pull_from_peer,
+            cancel_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running compsync desktop application");

@@ -15,6 +15,8 @@ pub enum ProtocolError {
     Io(#[from] std::io::Error),
     #[error("Handshake rejected: {0}")]
     HandshakeRejected(String),
+    #[error("Sync cancelled")]
+    Cancelled,
     #[error("Chunk verification failed for {file_hash} chunk {chunk_index}")]
     ChunkCorrupted {
         file_hash: String,

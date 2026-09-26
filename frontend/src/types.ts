@@ -62,11 +62,14 @@ export interface PairingInfo {
 }
 
 export interface SyncProgress {
+  phase: string;
   total_bytes: number;
   transferred_bytes: number;
   total_chunks: number;
   completed_chunks: number;
   current_file: string;
+  current_file_index: number;
+  total_files: number;
   speed_mbps: number;
   is_finished: boolean;
 }
