@@ -349,7 +349,8 @@ export function App() {
   };
 
   const handleOpenFolder = (subPath?: string) => {
-    const full = subPath ? `${projectPath}/${subPath}` : projectPath;
+    const isAbsolute = Boolean(subPath && /^[A-Za-z]:[\\/]/.test(subPath));
+    const full = subPath && isAbsolute ? subPath : subPath ? `${projectPath}/${subPath}` : projectPath;
     api.openFolder(full);
   };
 
@@ -377,6 +378,12 @@ export function App() {
 
   const handleSnapshot = async (message: string) => {
     if (!projectPath) return;
+    const confirmed = window.confirm(
+      language === 'id'
+        ? `Buat snapshot dengan pesan ini?\n\n${message}\n\nSnapshot tidak dapat diedit setelah dibuat.`
+        : `Create a snapshot with this message?\n\n${message}\n\nSnapshots cannot be edited after creation.`
+    );
+    if (!confirmed) return;
     setCreatingSnapshot(true);
     try {
       const snapshotId = await api.snapshot(projectPath, message);

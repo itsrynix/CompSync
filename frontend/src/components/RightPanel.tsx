@@ -1,4 +1,5 @@
 ﻿import React, { useState, useMemo } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   SnapshotSummaryDto,
   RepoStatusDto,
@@ -54,6 +55,15 @@ export const RightPanel: React.FC<Props> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState<FileCategory>("all");
+  const [customExtensions, setCustomExtensions] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("compsync_custom_extensions") || "[]");
+    } catch {
+      return [];
+    }
+  });
+  const [newExtension, setNewExtension] = useState("");
+  const [isCustomFilterOpen, setIsCustomFilterOpen] = useState(false);
   const t = I18N[language];
 
   const primaryAep = status?.aep_files?.[0];
@@ -117,9 +127,26 @@ export const RightPanel: React.FC<Props> = ({
         const stateMatches = f.state.toLowerCase().includes(query);
         if (!pathMatches && !stateMatches) return false;
       }
+      if (customExtensions.length > 0) {
+        const extension = `.${f.path.split(".").pop()?.toLowerCase() || ""}`;
+        if (!customExtensions.includes(extension)) return false;
+      }
       return true;
     });
-  }, [files, activeCategory, searchTerm]);
+  }, [files, activeCategory, searchTerm, customExtensions]);
+
+  const addCustomExtension = () => {
+    const normalized = newExtension.trim().toLowerCase().replace(/^[^a-z0-9]+/, "");
+    if (!normalized) return;
+    const extension = `.${normalized}`;
+    const next = customExtensions.includes(extension) ? customExtensions : [...customExtensions, extension];
+    setCustomExtensions(next);
+    localStorage.setItem("compsync_custom_extensions", JSON.stringify(next));
+    setNewExtension("");
+  };
+
+  const selectedExtension = selectedFile?.path.split(".").pop()?.toLowerCase();
+  const selectedAssetUrl = selectedFile?.absolute_path ? convertFileSrc(selectedFile.absolute_path) : "";
 
   const totalVolumeMb = files.reduce((acc, f) => acc + (f.size_mb || 0), 0);
   const totalVolumeDisplay =
@@ -190,6 +217,16 @@ export const RightPanel: React.FC<Props> = ({
             </div>
 
             {/* File Specs Grid */}
+            {selectedFile && selectedAssetUrl && selectedFile.state !== "Hilang" && (
+              <div className="overflow-hidden rounded-lg border border-studio-border bg-black/20">
+                {selectedExtension && ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(selectedExtension) ? (
+                  <img src={selectedAssetUrl} alt={selectedFile.path} className="max-h-64 w-full object-contain" />
+                ) : selectedExtension && ["mp3", "wav", "m4a", "flac", "aac", "ogg"].includes(selectedExtension) ? (
+                  <div className="p-4"><audio controls src={selectedAssetUrl} className="w-full" /></div>
+                ) : null}
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-3 pt-2 text-xs border-t border-studio-borderSubtle">
               <div>
                 <span className="text-[10px] uppercase font-bold text-studio-text-muted block">
@@ -246,7 +283,7 @@ export const RightPanel: React.FC<Props> = ({
             {/* Action Button */}
             <div className="pt-1 flex items-center space-x-2">
               <button
-                onClick={() => onOpenFolder(selectedFile.path)}
+                onClick={() => onOpenFolder(selectedFile.absolute_path || selectedFile.path)}
                 className="px-3 py-1.5 rounded-lg bg-studio-card hover:bg-studio-cardHover border border-studio-border text-xs text-studio-text-primary transition-colors flex items-center space-x-1.5"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
@@ -436,6 +473,46 @@ export const RightPanel: React.FC<Props> = ({
                 {counts.other}
               </span>
             </button>
+
+            <div className="relative ml-auto">
+              <button
+                onClick={() => setIsCustomFilterOpen((open) => !open)}
+                className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${customExtensions.length > 0 ? "border-studio-blue bg-studio-blue/15 text-studio-blue-light" : "border-studio-border/60 bg-studio-card/80 text-studio-text-secondary hover:text-studio-text-primary"}`}
+              >
+                Custom{customExtensions.length > 0 ? ` (${customExtensions.length})` : ""}
+              </button>
+              {isCustomFilterOpen && (
+                <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-studio-border bg-studio-surface p-2 shadow-xl">
+                  <div className="flex gap-1.5">
+                    <input
+                      value={newExtension}
+                      onChange={(event) => setNewExtension(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && addCustomExtension()}
+                      placeholder=".obj"
+                      className="min-w-0 flex-1 rounded border border-studio-border bg-studio-bg px-2 py-1 text-[11px] text-studio-text-primary outline-none focus:border-studio-blue"
+                    />
+                    <button onClick={addCustomExtension} className="rounded bg-studio-blue px-2 text-[11px] font-semibold text-white">Add</button>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {customExtensions.map((extension) => (
+                      <label key={extension} className="flex items-center gap-2 px-1 text-[11px] text-studio-text-secondary">
+                        <input
+                          type="checkbox"
+                          checked
+                          onChange={() => {
+                            const next = customExtensions.filter((item) => item !== extension);
+                            setCustomExtensions(next);
+                            localStorage.setItem("compsync_custom_extensions", JSON.stringify(next));
+                          }}
+                        />
+                        {extension}
+                      </label>
+                    ))}
+                    {customExtensions.length === 0 && <p className="px-1 text-[10px] text-studio-text-muted">Add .obj, .e3d, .mogrt...</p>}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Directory Rows */}
@@ -501,7 +578,7 @@ export const RightPanel: React.FC<Props> = ({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onOpenFolder(file.path);
+                          onOpenFolder(file.absolute_path || file.path);
                         }}
                         className="p-1 rounded-md bg-studio-card hover:bg-studio-cardHover border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors"
                         title={t.openInExplorer}

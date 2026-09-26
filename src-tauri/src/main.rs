@@ -1,9 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use compsync_core::{
-    AepTarget, Author, IndexDb, Manifest, ManifestFileEntry, ProjectScanner,
-};
+use compsync_core::{AepTarget, Author, IndexDb, Manifest, ManifestFileEntry, ProjectScanner};
 use compsync_network::{DiscoveryManager, PeerInfo, SyncEngine, DEFAULT_TCP_PORT};
 use compsync_watcher::{check_file_lock, LockStatus};
 use serde::{Deserialize, Serialize};
@@ -43,6 +41,7 @@ pub struct AepFileStatus {
 #[derive(Serialize, Deserialize)]
 pub struct ScannedFileDto {
     pub path: String,
+    pub absolute_path: String,
     pub size_mb: f64,
     pub state: String,
     pub hash_short: String,
@@ -102,10 +101,19 @@ async fn select_folder() -> Result<Option<String>, String> {
 async fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let requested = PathBuf::from(&path);
+        let target = requested
+            .canonicalize()
+            .map_err(|e| format!("Lokasi tidak ditemukan: {e}"))?;
+        let mut command = std::process::Command::new("explorer.exe");
+
+        if target.is_file() {
+            command.arg(format!("/select,{}", target.display()));
+        } else {
+            command.arg(target.as_os_str());
+        }
+
+        command.spawn().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -406,6 +414,7 @@ async fn scan_project(path: String) -> Result<ScanResultDto, String> {
 
             ScannedFileDto {
                 path: f.canonical_path,
+                absolute_path: f.absolute_path.to_string_lossy().to_string(),
                 size_mb: (f.size_bytes as f64) / (1024.0 * 1024.0),
                 state: state.into(),
                 hash_short: if f.blake3_hash.len() >= 8 {
@@ -421,6 +430,7 @@ async fn scan_project(path: String) -> Result<ScanResultDto, String> {
         if !current_paths.contains(path) {
             files.push(ScannedFileDto {
                 path: path.clone(),
+                absolute_path: root.join(path).to_string_lossy().to_string(),
                 size_mb: (*size_bytes as f64) / (1024.0 * 1024.0),
                 state: "Hilang".into(),
                 hash_short: if hash.len() >= 8 {
