@@ -711,6 +711,8 @@ export function App() {
         onSelectAccent={handleSelectAccent}
         language={language}
         onSelectLanguage={handleSelectLanguage}
+        deviceName={myDeviceName}
+        onRenameDevice={handleRenameMyDevice}
       />
 
       <PairingModal

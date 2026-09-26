@@ -4,11 +4,8 @@ import {
   FolderOpen,
   Lock,
   Unlock,
-  RefreshCw,
   HelpCircle,
   Download,
-  Edit2,
-  Check,
   Laptop,
   ArrowUpRight,
   ChevronDown,
@@ -85,8 +82,6 @@ export const TopBar: React.FC<Props> = ({
   leftWidth = 390,
   language = "en",
 }) => {
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState(myDeviceName);
   const [selectedPeerIdx, setSelectedPeerIdx] = useState(0);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -117,24 +112,19 @@ export const TopBar: React.FC<Props> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSaveName = () => {
-    if (tempName.trim()) {
-      onRenameMyDevice(tempName.trim());
-    } else {
-      setTempName(myDeviceName);
-    }
-    setIsEditingName(false);
-  };
-
   return (
     <header className="bg-studio-sidebar border-b border-studio-border h-[56px] flex items-center select-none z-30">
       {/* 1. Left Section: Seamless Project Selector (No floating inner box) */}
-      <div
+      <div style={{ width: `${leftWidth}px` }} className="h-full flex items-stretch flex-shrink-0">
+        <div className={`w-10 flex items-center justify-center border-r border-studio-border ${isLocked ? "text-studio-red-text" : "text-studio-green-text"}`} title={isLocked ? t.lockedAE : t.syncReady}>
+          {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+        </div>
+        <div
         data-tour="step-1"
-        style={{ width: `${leftWidth}px` }}
+        style={{ width: `calc(${leftWidth}px - 40px)` }}
         className="h-full border-r border-studio-border relative flex-shrink-0 flex items-stretch"
         ref={dropdownRef}
-      >
+        >
         <button
           onClick={() => setIsProjectMenuOpen((prev) => !prev)}
           className={`w-full h-full flex items-center justify-between px-4 transition-colors text-left group cursor-pointer ${
@@ -145,7 +135,7 @@ export const TopBar: React.FC<Props> = ({
           title={t.selectProject}
         >
           <div className="flex items-center space-x-3 min-w-0 pr-2">
-            <div className="w-8 h-8 rounded-lg bg-studio-blue/15 border border-studio-blue-border flex items-center justify-center text-studio-blue-light font-bold text-sm flex-shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-studio-blue/15 flex items-center justify-center text-studio-blue-light font-bold text-sm flex-shrink-0">
               <FolderOpen className="w-4 h-4" />
             </div>
 
@@ -264,6 +254,7 @@ export const TopBar: React.FC<Props> = ({
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* 2. Right Section: Hub Sync + Actions */}
@@ -278,37 +269,7 @@ export const TopBar: React.FC<Props> = ({
             <Laptop className="w-3.5 h-3.5 text-studio-text-muted" />
             <span className="text-[11px] text-studio-text-muted">{t.device}</span>
 
-            {isEditingName ? (
-              <div className="flex items-center space-x-1">
-                <input
-                  type="text"
-                  value={tempName}
-                  onChange={(e) => setTempName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
-                  className="bg-studio-card border border-studio-blue rounded px-1.5 py-0.5 text-xs text-studio-text-primary w-28 focus:outline-none"
-                  autoFocus
-                />
-                <button
-                  onClick={handleSaveName}
-                  className="p-0.5 rounded bg-studio-blue text-white hover:bg-studio-blue-hover"
-                  title="Save Device Name"
-                >
-                  <Check className="w-3 h-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setTempName(myDeviceName);
-                  setIsEditingName(true);
-                }}
-                className="flex items-center space-x-1 text-xs font-semibold text-studio-text-primary hover:text-studio-blue-light transition-colors group"
-                title="Click to rename your device"
-              >
-                <span>{myDeviceName}</span>
-                <Edit2 className="w-2.5 h-2.5 text-studio-text-muted group-hover:text-studio-blue-light" />
-              </button>
-            )}
+            <span className="text-xs font-semibold text-studio-text-primary">{myDeviceName}</span>
           </div>
 
           {/* Peer Selector & Push/Pull Action */}
@@ -371,42 +332,6 @@ export const TopBar: React.FC<Props> = ({
           data-tour="step-3"
           className="flex items-center space-x-2.5 flex-shrink-0"
         >
-          {status?.is_initialized && (
-            <div
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
-                isLocked
-                  ? "bg-studio-red-bg border-studio-red-border text-studio-red-text"
-                  : "bg-studio-green-bg border-studio-green-border text-studio-green-text"
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isLocked ? "bg-red-400 animate-pulse" : "bg-emerald-400"
-                }`}
-              />
-              {isLocked ? (
-                <>
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{t.lockedAE}</span>
-                </>
-              ) : (
-                <>
-                  <Unlock className="w-3.5 h-3.5" />
-                  <span>{t.syncReady}</span>
-                </>
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            className="p-2 rounded-lg bg-studio-surface hover:bg-studio-card border border-studio-border text-studio-text-secondary hover:text-studio-text-primary transition-colors"
-            title={t.refresh}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-
           {/* Icon-Only Settings Button */}
           <button
             onClick={onOpenPairing}

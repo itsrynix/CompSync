@@ -159,6 +159,8 @@ interface ThemeSettingsModalProps {
   onSelectAccent: (accentId: string) => void;
   language?: Language;
   onSelectLanguage?: (lang: Language) => void;
+  deviceName?: string;
+  onRenameDevice?: (name: string) => void;
 }
 
 export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
@@ -172,6 +174,8 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
   onSelectAccent,
   language = "en",
   onSelectLanguage,
+  deviceName = "",
+  onRenameDevice,
 }) => {
   const [activeTab, setActiveTab] = useState<"appearance" | "general">("appearance");
 
@@ -389,6 +393,16 @@ export const ThemeSettingsModal: React.FC<ThemeSettingsModalProps> = ({
 
             {activeTab === "general" && (
               <div className="space-y-6">
+                <div>
+                  <div className="text-[13px] font-medium text-gray-300 mb-2">Device name</div>
+                  <p className="text-xs text-studio-text-muted mb-3">This name is shown to paired computers on the LAN.</p>
+                  <input
+                    value={deviceName}
+                    onChange={(event) => onRenameDevice?.(event.target.value)}
+                    className="w-full max-w-sm rounded-lg border border-studio-border bg-studio-bg px-3 py-2 text-xs text-studio-text-primary outline-none focus:border-studio-blue"
+                    placeholder="e.g. Studio Desktop"
+                  />
+                </div>
                 <div>
                   <div className="text-[13px] font-medium text-gray-300 mb-2">
                     {t.languageLabel}
