@@ -2,11 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use compsync_core::{
-    AepTarget, Author, FileChangeState, IndexDb, Manifest, ManifestFileEntry, ProjectScanner,
+    AepTarget, Author, IndexDb, Manifest, ManifestFileEntry, ProjectScanner,
 };
 use compsync_network::{DiscoveryManager, PeerInfo, SyncEngine, DEFAULT_TCP_PORT};
 use compsync_watcher::{check_file_lock, LockStatus};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -356,6 +357,22 @@ fn initialize_project_layout(
     Ok(project_id.to_string())
 }
 
+fn latest_manifest(compsync_dir: &std::path::Path) -> Option<Manifest> {
+    let snapshots_dir = compsync_dir.join("objects").join("snapshots");
+    let latest_path = fs::read_dir(snapshots_dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .max_by_key(|path| {
+            path.metadata()
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        })?;
+
+    Manifest::load_from_file(&latest_path).ok()
+}
+
 #[tauri::command]
 async fn scan_project(path: String) -> Result<ScanResultDto, String> {
     let root = PathBuf::from(&path);
@@ -366,23 +383,55 @@ async fn scan_project(path: String) -> Result<ScanResultDto, String> {
 
     let (scanned_files, summary) = scanner.scan().map_err(|e| e.to_string())?;
 
-    let files = scanned_files
+    let snapshot_files: HashMap<String, (String, u64)> = latest_manifest(&compsync_dir)
+        .map(|manifest| {
+            manifest
+                .tree
+                .into_iter()
+                .map(|entry| (entry.path, (entry.blake3_hash, entry.size_bytes)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut current_paths = HashSet::new();
+
+    let mut files: Vec<ScannedFileDto> = scanned_files
         .into_iter()
-        .map(|f| ScannedFileDto {
-            path: f.canonical_path,
-            size_mb: (f.size_bytes as f64) / (1024.0 * 1024.0),
-            state: match f.state {
-                FileChangeState::Added => "Baru".into(),
-                FileChangeState::Modified => "Diubah".into(),
-                FileChangeState::Unchanged => "Tersimpan".into(),
-            },
-            hash_short: if f.blake3_hash.len() >= 8 {
-                f.blake3_hash[..8].to_string()
-            } else {
-                f.blake3_hash
-            },
+        .map(|f| {
+            current_paths.insert(f.canonical_path.clone());
+            let state = match snapshot_files.get(&f.canonical_path) {
+                Some((snapshot_hash, _)) if snapshot_hash == &f.blake3_hash => "Tersimpan",
+                Some(_) => "Diubah",
+                None => "Baru",
+            };
+
+            ScannedFileDto {
+                path: f.canonical_path,
+                size_mb: (f.size_bytes as f64) / (1024.0 * 1024.0),
+                state: state.into(),
+                hash_short: if f.blake3_hash.len() >= 8 {
+                    f.blake3_hash[..8].to_string()
+                } else {
+                    f.blake3_hash
+                },
+            }
         })
         .collect();
+
+    for (path, (hash, size_bytes)) in &snapshot_files {
+        if !current_paths.contains(path) {
+            files.push(ScannedFileDto {
+                path: path.clone(),
+                size_mb: (*size_bytes as f64) / (1024.0 * 1024.0),
+                state: "Hilang".into(),
+                hash_short: if hash.len() >= 8 {
+                    hash[..8].to_string()
+                } else {
+                    hash.clone()
+                },
+            });
+        }
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
 
     let throughput_gbps = if summary.hashed_bytes > 0 && summary.duration_ms > 0 {
         (summary.hashed_bytes as f64 / (summary.duration_ms as f64 / 1000.0))

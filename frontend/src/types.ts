@@ -22,7 +22,7 @@ export interface RepoStatusDto {
 export interface ScannedFileDto {
   path: string;
   size_mb: number;
-  state: 'Added' | 'Modified' | 'Cached' | 'Baru' | 'Diubah' | 'Tersimpan';
+  state: 'Added' | 'Modified' | 'Cached' | 'Baru' | 'Diubah' | 'Tersimpan' | 'Hilang' | 'Missing' | 'Konflik';
   hash_short: string;
 }
 

@@ -131,6 +131,9 @@ export const RightPanel: React.FC<Props> = ({
     if (state === "Tersimpan") return t.statusSynced;
     if (state === "Diubah") return t.statusModified;
     if (state === "Baru") return t.statusNew;
+    if (state === "Hilang") return t.statusDeleted;
+    if (state === "Missing") return t.statusMissing;
+    if (state === "Konflik") return t.statusConflict;
     return state;
   };
 
@@ -166,6 +169,8 @@ export const RightPanel: React.FC<Props> = ({
                       ? "bg-studio-green-subtle text-studio-green-text border-studio-green-border"
                       : selectedFile.state === "Diubah"
                       ? "bg-studio-blue-subtle text-studio-blue-light border-studio-blue-border"
+                      : selectedFile.state === "Hilang"
+                      ? "bg-studio-red-bg text-studio-red-text border-studio-red-border"
                       : "bg-studio-card text-studio-text-secondary border-studio-border"
                   }`}
                 >
@@ -481,6 +486,8 @@ export const RightPanel: React.FC<Props> = ({
                             ? "bg-studio-green-subtle text-studio-green-text border-studio-green-border"
                             : file.state === "Diubah"
                             ? "bg-studio-blue-subtle text-studio-blue-light border-studio-blue-border"
+                            : file.state === "Hilang"
+                            ? "bg-studio-red-bg text-studio-red-text border-studio-red-border"
                             : "bg-studio-card text-studio-text-muted border-studio-border"
                         }`}
                       >

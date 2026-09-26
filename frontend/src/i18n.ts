@@ -58,6 +58,9 @@ export interface Translations {
   statusSynced: string;
   statusModified: string;
   statusNew: string;
+  statusDeleted: string;
+  statusMissing: string;
+  statusConflict: string;
 
   // Settings Modal
   settingsTitle: string;
@@ -134,6 +137,9 @@ export const I18N: Record<Language, Translations> = {
     statusSynced: "Synced",
     statusModified: "Modified",
     statusNew: "New",
+    statusDeleted: "Missing locally",
+    statusMissing: "Missing",
+    statusConflict: "Conflict",
 
     settingsTitle: "Settings",
     tabAppearance: "Appearance",
@@ -206,6 +212,9 @@ export const I18N: Record<Language, Translations> = {
     statusSynced: "Tersimpan",
     statusModified: "Diubah",
     statusNew: "Baru",
+    statusDeleted: "Hilang",
+    statusMissing: "Missing",
+    statusConflict: "Konflik",
 
     settingsTitle: "Pengaturan",
     tabAppearance: "Tampilan",
