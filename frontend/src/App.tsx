@@ -7,6 +7,7 @@ import { RightPanel } from './components/RightPanel';
 import { InteractiveTourSpotlight } from './components/InteractiveTourSpotlight';
 import { ThemeSettingsModal, applyThemeToDom } from './components/ThemeSettingsModal';
 import { PairingModal } from './components/PairingModal';
+import { ProjectSetupModal } from './components/ProjectSetupModal';
 import { AlertTriangle, CheckCircle2, FolderOpen, X } from 'lucide-react';
 import { Language } from './i18n';
 
@@ -81,6 +82,8 @@ export function App() {
   const [status, setStatus] = useState<RepoStatusDto | null>(null);
   const [pairingInfo, setPairingInfo] = useState<PairingInfo | null>(null);
   const [isPairingOpen, setIsPairingOpen] = useState(false);
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [setupPath, setSetupPath] = useState(projectPath);
   const [initMode, setInitMode] = useState<'choice' | 'create' | 'join'>('choice');
   const [pairingCode, setPairingCode] = useState('');
   const [scanResult, setScanResult] = useState<ScanResultDto | null>(null);
@@ -273,6 +276,42 @@ export function App() {
     }
 
     handleSwitchProject(trimmed);
+  };
+
+  const rememberProject = (path: string) => {
+    const normalizedPath = path.replace(/\\/g, '/');
+    const name = normalizedPath.split('/').filter(Boolean).pop() || normalizedPath;
+    if (!projectList.some((project) => project.path.toLowerCase() === normalizedPath.toLowerCase())) {
+      const updated = [...projectList, { name, path: normalizedPath }];
+      setProjectList(updated);
+      localStorage.setItem('compsync_project_list', JSON.stringify(updated));
+    }
+    return normalizedPath;
+  };
+
+  const handleSetupSelectFolder = async () => {
+    const selected = await api.selectFolder();
+    if (selected) setSetupPath(selected.replace(/\\/g, '/'));
+  };
+
+  const handleSetupCreate = async (path: string) => {
+    const normalizedPath = rememberProject(path);
+    await api.initProject(normalizedPath);
+    setIsSetupOpen(false);
+    setProjectPath(normalizedPath);
+    localStorage.setItem('compsync_project_path', normalizedPath);
+    await refreshAll(normalizedPath);
+    triggerNotification(language === 'id' ? 'Project berhasil dibuat.' : 'Project created successfully.', 3500);
+  };
+
+  const handleSetupJoin = async (path: string, code: string) => {
+    const normalizedPath = rememberProject(path);
+    await api.joinProject(normalizedPath, code);
+    setIsSetupOpen(false);
+    setProjectPath(normalizedPath);
+    localStorage.setItem('compsync_project_path', normalizedPath);
+    await refreshAll(normalizedPath);
+    triggerNotification(language === 'id' ? 'Project berhasil di-link.' : 'Project linked successfully.', 3500);
   };
 
   const handleJoinExistingProject = async () => {
@@ -493,8 +532,7 @@ export function App() {
         isMockMode={isMockMode}
         projectList={projectList}
         onSwitchProject={handleSwitchProject}
-        onAddNewProject={handleAddNewProject}
-        onJoinProject={handleJoinExistingProject}
+        onOpenSetup={() => { setSetupPath(projectPath); setIsSetupOpen(true); }}
         onOpenFolderByPath={handleOpenFolderByPath}
         myDeviceName={myDeviceName}
         onRenameMyDevice={handleRenameMyDevice}
@@ -720,6 +758,16 @@ export function App() {
         onClose={() => setIsPairingOpen(false)}
         pairingInfo={pairingInfo}
         language={language}
+      />
+
+      <ProjectSetupModal
+        isOpen={isSetupOpen}
+        onClose={() => setIsSetupOpen(false)}
+        language={language}
+        selectedPath={setupPath}
+        onSelectFolder={handleSetupSelectFolder}
+        onCreate={handleSetupCreate}
+        onJoin={handleSetupJoin}
       />
 
       {/* Floating Non-Intrusive Guided Spotlight */}

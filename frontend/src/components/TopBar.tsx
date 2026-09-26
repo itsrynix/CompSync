@@ -26,8 +26,7 @@ interface Props {
   projectList: ProjectItem[];
   onSelectProject?: (path: string) => void;
   onSwitchProject?: (path: string) => void;
-  onAddNewProject: () => void;
-  onJoinProject: () => void;
+  onOpenSetup: () => void;
   onOpenFolderPath?: (path: string) => void;
   onOpenFolderByPath?: (path: string) => void;
   status: RepoStatusDto | null;
@@ -59,8 +58,7 @@ export const TopBar: React.FC<Props> = ({
   projectList,
   onSelectProject,
   onSwitchProject,
-  onAddNewProject,
-  onJoinProject,
+  onOpenSetup,
   onOpenFolderPath,
   onOpenFolderByPath,
   status,
@@ -235,21 +233,12 @@ export const TopBar: React.FC<Props> = ({
               <button
                 onClick={() => {
                   setIsProjectMenuOpen(false);
-                  onAddNewProject();
+                  onOpenSetup();
                 }}
                 className="w-full py-2 px-3 rounded-lg bg-studio-blue hover:bg-studio-blue-hover text-white text-xs font-semibold flex items-center justify-center space-x-2 shadow-sm transition-colors"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
-                <span>{t.addNewProject}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setIsProjectMenuOpen(false);
-                  onJoinProject();
-                }}
-                className="mt-2 w-full rounded-lg border border-studio-border bg-studio-card px-3 py-2 text-xs font-semibold text-studio-text-secondary transition-colors hover:bg-studio-cardHover hover:text-studio-text-primary"
-              >
-                <span>{language === "id" ? "Gabung Project Existing..." : "Join Existing Project..."}</span>
+                <span>{language === "id" ? "Siapkan Project..." : "Set Up Project..."}</span>
               </button>
             </div>
           </div>
