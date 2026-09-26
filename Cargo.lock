@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "compsync_cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "clap",
@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "compsync_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "chrono",
@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "compsync_desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "compsync_core",
@@ -548,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "compsync_network"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bincode",
  "bytes",
@@ -565,7 +565,7 @@ dependencies = [
 
 [[package]]
 name = "compsync_watcher"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "compsync_core",
  "tempfile",
