@@ -137,7 +137,7 @@ export function App() {
   // Stretchable sidebar width state
   const [leftWidth, setLeftWidth] = useState<number>(() => {
     const saved = localStorage.getItem('compsync_left_panel_width');
-    return saved ? Math.max(280, Math.min(800, parseInt(saved, 10))) : 390;
+    return saved ? Math.max(260, Math.min(800, parseInt(saved, 10))) : 360;
   });
   const [isDraggingDivider, setIsDraggingDivider] = useState(false);
 
@@ -149,7 +149,7 @@ export function App() {
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const newWidth = Math.max(
-        280,
+        260,
         Math.min(window.innerWidth * 0.65, startWidth + (moveEvent.clientX - startX))
       );
       setLeftWidth(newWidth);
@@ -218,12 +218,10 @@ export function App() {
         const p = await api.getPeers();
         setPeers(p);
 
-        if (isMockMode && !scanResult) {
-          const res = await api.scan(activePath);
-          setScanResult(res);
-          if (res.files.length > 0 && !selectedFile) {
-            setSelectedFile(res.files[0]);
-          }
+        const res = await api.scan(activePath);
+        setScanResult(res);
+        if (res.files.length > 0 && !selectedFile) {
+          setSelectedFile(res.files[0]);
         }
       } else {
         setPairingInfo(null);
@@ -671,7 +669,7 @@ export function App() {
           {/* Draggable Divider Splitter */}
           <div
             onMouseDown={handleMouseDownDivider}
-            className={`w-1 cursor-col-resize flex-shrink-0 transition-colors z-20 relative group ${
+            className={`w-px cursor-col-resize flex-shrink-0 transition-colors z-20 relative group ${
               isDraggingDivider
                 ? 'bg-studio-blue'
                 : 'bg-studio-border hover:bg-studio-blue'
@@ -679,7 +677,7 @@ export function App() {
             title="Drag to resize sidebar"
           >
             {/* Invisible 16px grab hit area */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize z-10" />
+            <div className="absolute inset-y-0 -left-1.5 right-0 cursor-col-resize z-10" />
           </div>
 
           {/* Right Panel */}

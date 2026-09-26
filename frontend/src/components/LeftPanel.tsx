@@ -55,7 +55,9 @@ export const LeftPanel: React.FC<Props> = ({
   const [searchHistory, setSearchHistory] = useState('');
   const t = I18N[language];
 
-  const changedFiles = scanResult?.files || [];
+  const changedFiles = (scanResult?.files || []).filter(
+    (file) => file.state !== 'Tersimpan'
+  );
   const modifiedCount = changedFiles.filter((f) => f.state !== 'Tersimpan').length;
 
   const handleCommitSubmit = (e: React.FormEvent) => {
